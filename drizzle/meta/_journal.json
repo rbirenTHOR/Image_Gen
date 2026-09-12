@@ -1,0 +1,13 @@
+{
+  "version": "7",
+  "dialect": "sqlite",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "6",
+      "when": 1789236468932,
+      "tag": "0000_whole_ben_grimm",
+      "breakpoints": true
+    }
+  ]
+}
