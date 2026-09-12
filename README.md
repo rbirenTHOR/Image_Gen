@@ -26,7 +26,8 @@ Three AI landscape plates and a clearly labeled generic AI trailer sample are in
 
 - Landscapes and reusable objects: `openai/gpt-image-2.5/sunburst/text-to-image` through fal.
 - RV compositing and scene objects: `openai/gpt-image-2.5/sunburst/edit` through fal.
-- Every Sunburst request explicitly sets `quality: "max"` and `num_images: 1`. Four independent requests are submitted concurrently.
+- Every Sunburst request explicitly sets `quality: "max"`, `num_images: 1`, lossless PNG output, and native high-resolution dimensions: 3264×2448 (4:3), 3840×2160 (16:9), 2880×2880 (square), or 2448×3264 (portrait). Four independent requests are submitted concurrently. Higher resolution increases generation time and provider usage; existing files retain their original resolution.
+- References above 2 MB are streamed to fal with a 24-hour expiration preference before editing/chat, avoiding repeated base64 copies of large images in Worker memory. The private R2 original remains the master. Generated files are preserved without resizing or recompression.
 - People: `meta/muse-image/edit` through fal, using only the selected scene.
 - Optional prompt enhancement: OpenAI Responses API, `gpt-5.4-mini`, configurable with `PROMPT_MODEL`.
 
@@ -86,3 +87,7 @@ The campaign extension uses additive migration `0001_huge_slipstream.sql`: galle
 `tests/campaign-flow.py` is a resumable paid integration audit: eight fal images plus OpenAI conversation requests. It tests multiple saved pictures, idempotence, reference validation, new image and edit routing at Max, source lineage, independent approval and conversation persistence. Preserve `work/campaign-test-report.json` when resuming. `tests/campaign-safety.py` checks authentication, ownership, bulk validation, immutable submitted directions, explicit bases, approval rules and interrupted-reply recovery using local fixtures. The existing wizard domain and API tests remain applicable.
 
 Campaign browser QA covers ordered multi-reference selection, live chat, draft preservation during replies, two-photo uploads, reload persistence, desktop/mobile layout, image review and campaign reopening. Native WebMCP remains guarded when unavailable in the browser.
+
+## Native resolution audit
+
+`tests/resolution-flow.py` submits one resumable four-image Max edit batch at 3840×2160, verifies the actual PNG headers and stored dimensions, confirms receipt reuse, and passes all four large references into creative chat. PNG dimensions are read from the image header when fal omits metadata. Save recovery was also verified for chunked transfers using the same provider receipt and an unchanged SHA-256 hash.

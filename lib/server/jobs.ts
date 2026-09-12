@@ -1,6 +1,7 @@
 import { providerFetch } from "./provider-fetch";
 import { all, one, run, runtime, ApiError } from "./runtime";
-import { getAsset, getProject, assetDataURI } from "./library";
+import { getAsset, getProject } from "./library";
+import { modelImages } from "./model-images";
 import {
   modelFor,
   buildPrompt,
@@ -174,7 +175,7 @@ export async function startBatch(raw: unknown, owner: string) {
       429,
       "Two batches are already working. Let one finish before starting another.",
     );
-  const images = await Promise.all(inputs.map((id) => assetDataURI(id, owner)));
+  const images = await modelImages(inputs, owner);
   const endpoint = modelFor(data.stage),
     now = Date.now();
   const statements = [
@@ -264,18 +265,18 @@ async function saveImage(
       "The provider returned an unexpected image address.",
     );
   const response = await providerFetch(image.url, {
-    signal: AbortSignal.timeout(30000),
+    signal: AbortSignal.timeout(60000),
   });
   if (!response.ok)
     throw new ApiError(
       503,
       "Image transfer failed. Your generation is complete; retry saving it.",
     );
-  if (Number(response.headers.get("content-length") ?? 0) > 25 * 1024 * 1024)
+  const maxBytes = 40 * 1024 * 1024;
+  const contentLength = Number(response.headers.get("content-length") ?? 0);
+  if (contentLength > maxBytes)
     throw new ApiError(503, "The generated file is too large to save.");
-  const bytes = await response.arrayBuffer();
-  if (bytes.byteLength > 25 * 1024 * 1024)
-    throw new ApiError(503, "The generated file is too large to save.");
+  if (!response.body) throw new ApiError(503, "The generated file is empty.");
   const mime =
     image.content_type || response.headers.get("content-type") || "image/jpeg";
   if (!["image/jpeg", "image/png", "image/webp"].includes(mime))
@@ -285,9 +286,85 @@ async function saveImage(
     );
   const id = job.id,
     key = "generated/" + id;
-  await runtime().BUCKET.put(key, bytes, {
-    httpMetadata: { contentType: mime },
-  });
+  // fal may omit width/height. Capture only the PNG header as bytes stream
+  // to storage; never load or re-encode the whole image to inspect its size.
+  const prefix = new Uint8Array(24);
+  let prefixLength = 0;
+  const imageStream = response.body.pipeThrough(
+    new TransformStream<Uint8Array, Uint8Array>({
+      transform(chunk, controller) {
+        const count = Math.min(prefix.length - prefixLength, chunk.byteLength);
+        if (count) {
+          prefix.set(chunk.subarray(0, count), prefixLength);
+          prefixLength += count;
+        }
+        controller.enqueue(chunk);
+      },
+    }),
+  );
+  if (Number.isSafeInteger(contentLength) && contentLength > 0) {
+    // R2 requires a known-length stream; FixedLengthStream also rejects a
+    // truncated or oversized transfer before the object can be committed.
+    const { FixedLengthStream } = globalThis as unknown as {
+      FixedLengthStream: new (
+        length: number,
+      ) => TransformStream<Uint8Array, Uint8Array>;
+    };
+    await runtime().BUCKET.put(
+      key,
+      imageStream.pipeThrough(new FixedLengthStream(contentLength)),
+      {
+        httpMetadata: { contentType: mime },
+      },
+    );
+  } else {
+    // Chunked responses have no known length. Bound each in-flight upload to
+    // one 5 MiB part instead of buffering four full-resolution PNGs.
+    const upload = await runtime().BUCKET.createMultipartUpload(key, {
+      httpMetadata: { contentType: mime },
+    });
+    const reader = imageStream.getReader();
+    const parts: { partNumber: number; etag: string }[] = [];
+    let buffer = new Uint8Array(5 * 1024 * 1024),
+      filled = 0,
+      received = 0;
+    try {
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        received += value.byteLength;
+        if (received > maxBytes)
+          throw new ApiError(503, "The generated file is too large to save.");
+        for (let offset = 0; offset < value.length; ) {
+          const count = Math.min(buffer.length - filled, value.length - offset);
+          buffer.set(value.subarray(offset, offset + count), filled);
+          filled += count;
+          offset += count;
+          if (filled === buffer.length) {
+            parts.push(await upload.uploadPart(parts.length + 1, buffer));
+            buffer = new Uint8Array(buffer.length);
+            filled = 0;
+          }
+        }
+      }
+      if (!received) throw new ApiError(503, "The generated file is empty.");
+      if (filled)
+        parts.push(
+          await upload.uploadPart(parts.length + 1, buffer.subarray(0, filled)),
+        );
+      await upload.complete(parts);
+    } catch (error) {
+      await reader.cancel().catch(() => {});
+      await upload.abort().catch(() => {});
+      throw error;
+    }
+  }
+  const png =
+    prefixLength === 24 &&
+    [137, 80, 78, 71, 13, 10, 26, 10].every((byte, i) => prefix[i] === byte);
+  const header = new DataView(prefix.buffer);
+  const width = png ? header.getUint32(16) : (image.width ?? 0);
+  const height = png ? header.getUint32(20) : (image.height ?? 0);
   const kind =
     b.stage === "landscape"
       ? "landscape"
@@ -328,8 +405,8 @@ async function saveImage(
         "generated",
         key,
         mime,
-        image.width ?? 0,
-        image.height ?? 0,
+        width,
+        height,
         buildPrompt(b.stage, b.prompt, job.slot),
         b.endpoint,
         b.quality,
@@ -338,6 +415,11 @@ async function saveImage(
         b.id,
         Date.now(),
       ),
+    runtime()
+      .DB.prepare(
+        "UPDATE assets SET width=?,height=? WHERE id=? AND owner_id=? AND (width=0 OR height=0)",
+      )
+      .bind(width, height, id, b.owner_id),
     runtime()
       .DB.prepare(
         "UPDATE jobs SET status=?,result_asset_id=?,error=NULL,updated_at=?,elapsed_ms=?,lease_until=0 WHERE id=?",
@@ -466,8 +548,9 @@ export async function retryJob(id: string, owner: string) {
       409,
       "Only a failed image can be regenerated. Your other images are unchanged.",
     );
-  const images = await Promise.all(
-    (JSON.parse(b.inputs_json) as string[]).map((a) => assetDataURI(a, owner)),
+  const images = await modelImages(
+    JSON.parse(b.inputs_json) as string[],
+    owner,
   );
   const claimed = await one<StoredJob>(
     "UPDATE jobs SET status=?,request_id=NULL,status_url=NULL,response_url=NULL,error=NULL,created_at=?,updated_at=?,attempts=attempts+1 WHERE id=? AND status=? RETURNING *",

@@ -2,6 +2,23 @@ import { z } from "zod";
 export const GENERATE_ENDPOINT = "openai/gpt-image-2.5/sunburst/text-to-image";
 export const EDIT_ENDPOINT = "openai/gpt-image-2.5/sunburst/edit";
 export const PEOPLE_ENDPOINT = "meta/muse-image/edit";
+// fal: dimensions divisible by 16, edge <=3840, total pixels <=8,294,400.
+// Preserve the exact chosen aspect ratio while using the largest valid size.
+export const generationSizes: Record<
+  string,
+  { width: number; height: number }
+> = {
+  landscape_4_3: { width: 3264, height: 2448 },
+  landscape_16_9: { width: 3840, height: 2160 },
+  square_hd: { width: 2880, height: 2880 },
+  portrait_4_3: { width: 2448, height: 3264 },
+};
+export function generationSizeLabel(aspect: string) {
+  const size = generationSizes[aspect];
+  return size
+    ? `${size.width} × ${size.height} · PNG`
+    : "High resolution · PNG";
+}
 export const stages = [
   "rv",
   "landscape",
@@ -150,8 +167,10 @@ export function providerInput(
     input.image_urls = images;
   } else {
     input.quality = "max";
-    input.image_size = aspect;
-    input.output_format = "jpeg";
+    const size = generationSizes[aspect];
+    if (!size) throw new Error("Unsupported image aspect ratio");
+    input.image_size = { ...size };
+    input.output_format = "png";
     if (stage === "compose" || stage === "objects" || stage === "variation")
       input.image_urls = images;
   }

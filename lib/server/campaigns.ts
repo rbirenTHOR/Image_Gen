@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { all, one, run, runtime, ApiError } from "./runtime";
-import { getAsset, getProject, assetDataURI } from "./library";
+import { getAsset, getProject } from "./library";
+import { modelImages } from "./model-images";
 import { startBatch, batchView } from "./jobs";
 import { providerFetch } from "./provider-fetch";
 import {
@@ -116,7 +117,7 @@ async function writeReply(t: CampaignTurn, owner: string) {
     const p = await getProject(t.project_id, owner);
     const refs = JSON.parse(t.references_json) as string[];
     const selected = await Promise.all(refs.map((id) => getAsset(id, owner)));
-    const images = await Promise.all(refs.map((id) => assetDataURI(id, owner)));
+    const images = await modelImages(refs, owner);
     const history = await all<CampaignTurn>(
       "SELECT * FROM campaign_turns WHERE project_id=? AND owner_id=? AND created_at<? AND status='ready' ORDER BY created_at DESC LIMIT 12",
       p.id,

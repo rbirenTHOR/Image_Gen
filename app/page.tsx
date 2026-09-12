@@ -63,6 +63,7 @@ import {
 import { Toaster, toast } from "sonner";
 import {
   activeStatus,
+  generationSizeLabel,
   stages,
   type Asset,
   type Project,
@@ -1100,7 +1101,10 @@ export default function Studio() {
                 ]}
               />
               <small>
-                Four images billed by fal. Cost varies with quality and inputs.
+                {genStage === "people"
+                  ? "Four images billed by fal."
+                  : `${generationSizeLabel(aspect)}. Four Max images via fal.`}{" "}
+                Higher resolution takes longer and may cost more.
               </small>
             </div>
             <Button

@@ -6,6 +6,7 @@ import {
   providerInput,
   requestSchema,
   activeStatus,
+  generationSizes,
 } from "../lib/domain.ts";
 test("All Sunburst operations explicitly request Max and one image per independent job", () => {
   for (const stage of [
@@ -97,4 +98,42 @@ test("Campaign image variations preserve ordered references and use Sunburst edi
     "max",
   );
   assert.match(buildPrompt("variation", "Add two people", 0), /Edit image 1/);
+});
+
+test("Native high-resolution outputs preserve aspect and satisfy fal pixel constraints", () => {
+  const ratios: Record<string, number> = {
+    landscape_4_3: 4 / 3,
+    landscape_16_9: 16 / 9,
+    square_hd: 1,
+    portrait_4_3: 3 / 4,
+  };
+  for (const [aspect, size] of Object.entries(generationSizes)) {
+    assert.equal(size.width % 16, 0);
+    assert.equal(size.height % 16, 0);
+    assert.ok(Math.max(size.width, size.height) <= 3840);
+    assert.ok(size.width * size.height <= 8294400);
+    assert.ok(size.width * size.height >= 7900000);
+    assert.equal(size.width / size.height, ratios[aspect]);
+    for (const stage of [
+      "landscape",
+      "compose",
+      "objects",
+      "prop",
+      "campaign",
+      "variation",
+    ] as const) {
+      const input = providerInput(stage, "Preserve detail", aspect, ["base"]);
+      assert.deepEqual(input.image_size, size);
+      assert.equal(input.quality, "max");
+      assert.equal(input.output_format, "png");
+      assert.ok(!("output_compression" in input));
+    }
+  }
+  assert.throws(() => providerInput("campaign", "brief", "unsupported", []));
+  assert.ok(
+    !(
+      "image_size" in
+      providerInput("people", "brief", "landscape_4_3", ["base"])
+    ),
+  );
 });

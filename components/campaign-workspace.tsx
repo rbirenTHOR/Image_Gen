@@ -45,6 +45,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "sonner";
 import {
   activeStatus,
+  generationSizeLabel,
   type Asset,
   type Project,
   type Batch,
@@ -1101,8 +1102,9 @@ export default function CampaignWorkspace({
                                 <ArrowUp />
                               </Button>
                               <small>
-                                Four images via fal. Generation uses your API
-                                key.
+                                {generationSizeLabel(aspects[t.id] ?? t.aspect)}
+                                . Four Max images via fal. Higher resolution
+                                takes longer and may cost more.
                               </small>
                             </>
                           )}
