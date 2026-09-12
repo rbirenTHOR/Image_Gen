@@ -43,6 +43,7 @@ import {
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "sonner";
+import { readCampaignDraft, writeCampaignDraft } from "@/lib/campaign-draft";
 import {
   activeStatus,
   generationSizeLabel,
@@ -291,6 +292,7 @@ export default function CampaignWorkspace({
     [selected, setSelected] = useState<string[]>([]),
     [refs, setRefs] = useState<string[]>([]),
     [text, setText] = useState(""),
+    [draftReady, setDraftReady] = useState(false),
     [sending, setSending] = useState(false),
     [generating, setGenerating] = useState<string | null>(null),
     [promptEdits, setPromptEdits] = useState<Record<string, string>>({}),
@@ -326,17 +328,46 @@ export default function CampaignWorkspace({
   }
   useEffect(() => {
     alive.current = true;
+    const draft = readCampaignDraft(project.id);
+    if (draft) {
+      setText(draft.text);
+      setRefs(draft.refs);
+      setPromptEdits(draft.promptEdits);
+      setAspects(draft.aspects);
+    }
     reload()
       .then((next) => {
         const latest = next.turns.at(-1);
-        if (latest) setRefs(parseRefs(latest));
+        if (alive.current && latest && !draft) setRefs(parseRefs(latest));
       })
       .catch((e) => setError(e.message))
-      .finally(() => setLoading(false));
+      .finally(() => {
+        if (alive.current) {
+          setLoading(false);
+          setDraftReady(true);
+        }
+      });
     return () => {
       alive.current = false;
     };
   }, [project.id]);
+  useEffect(() => {
+    if (!draftReady) return;
+    // Preserve only unsent prompt edits. Submitted directions come from the server.
+    const pending = new Set(
+      data.turns.filter((t) => !t.batch_id).map((t) => t.id),
+    );
+    writeCampaignDraft(project.id, {
+      text,
+      refs,
+      promptEdits: Object.fromEntries(
+        Object.entries(promptEdits).filter(([id]) => pending.has(id)),
+      ),
+      aspects: Object.fromEntries(
+        Object.entries(aspects).filter(([id]) => pending.has(id)),
+      ),
+    });
+  }, [project.id, draftReady, text, refs, promptEdits, aspects, data.turns]);
   useEffect(() => {
     if (!data.turns.some((t) => t.status === "planning")) return;
     const timer = setInterval(() => reload().catch(() => {}), 4000);
@@ -393,7 +424,7 @@ export default function CampaignWorkspace({
     setCompare(false);
   }
   async function send() {
-    if (!text.trim() || sending) return;
+    if (!text.trim() || sending || loading) return;
     const message = text.trim(),
       references = [...refs],
       id = crypto.randomUUID();
@@ -1099,7 +1130,12 @@ export default function CampaignWorkspace({
                                 "Enhanced prompt for " +
                                 t.user_text.slice(0, 40)
                               }
-                              value={promptEdits[t.id] ?? t.prompt}
+                              value={
+                                t.batch_id
+                                  ? t.prompt
+                                  : (promptEdits[t.id] ?? t.prompt)
+                              }
+                              maxLength={12000}
                               readOnly={!!t.batch_id}
                               onChange={(e) =>
                                 setPromptEdits((v) => ({
@@ -1202,6 +1238,7 @@ export default function CampaignWorkspace({
               <Textarea
                 ref={composer}
                 aria-label="Message your creative partner"
+                disabled={loading}
                 placeholder={
                   refs.length
                     ? "What would you change?"
@@ -1246,6 +1283,7 @@ export default function CampaignWorkspace({
                   aria-label="Send message"
                   disabled={
                     sending ||
+                    loading ||
                     !text.trim() ||
                     data.turns.some((t) => t.status === "planning")
                   }

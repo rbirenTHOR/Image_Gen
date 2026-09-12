@@ -15,6 +15,10 @@ Generation fixtures simulate four independently submitted jobs, delayed completi
 
 Coverage includes sign-in, uploads, libraries and search, enhanced prompts, reload during generation, selecting and saving multiple takes, RV composition, optional people and objects, source comparison, approval gates, original/cropped downloads, campaign imports, multi-upload, ordered references, chat, variations, retry behavior, saved-state persistence, browser navigation, responsive overflow, keyboard focus and automated accessibility checks.
 
+The refinement cases additionally exercise unsent message/reference recovery, campaign isolation, edited prompt and aspect recovery, and a lost generation response. The lost-response test lets the API finish, drops its response in the browser, then verifies that recovery retrieves exactly the original four image requests. Drafts are scoped to the current browser tab and campaign; they are not a cross-device autosave service.
+
+The clean-checkout suite now contains 17 journeys across three configurations (51 cases), plus the eight domain checks.
+
 Successful checkpoints save screenshots. Failures add screenshots and Playwright traces. The HTML/JSON reports live under `output/playwright/`, which is intentionally ignored by Git. Accessibility checks wait for finite UI transitions before measuring contrast; serious and critical WCAG A/AA violations fail the suite. Automated checks do not replace a manual screen-reader audit.
 
 ## Optional paid provider check
@@ -30,3 +34,7 @@ RUN_LIVE_PROVIDER_TESTS=1 npx playwright test --config playwright.live.config.ts
 Without the explicit flag the paid test skips. To resume a previous paid batch without generating another one, provide its QA campaign ID in `LIVE_QA_PROJECT`; this reopens the existing campaign and continues the save/inspection/download assertions. Native dimensions and downloaded PNG headers are verified independently of the preview size. Results live in `output/playwright/live-results.json` and `output/playwright/live-results/`. Approval clicks in QA verify the workflow only; marketing still needs human review of real RV markings and scene details.
 
 The older `api-safety.py` and `campaign-safety.py` checks require the existing local live-test fixtures and port 5173. They are not part of the clean-checkout command above.
+
+## Photographic quality evaluation
+
+See `tests/realism/README.md` for the separate, resumable real-provider comparison. It tests generated image quality with three environments and repeated samples, while the browser suite tests application behavior with fixed images.
