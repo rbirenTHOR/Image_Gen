@@ -163,7 +163,20 @@ const provider = createServer(async (req, res) => {
       return res.end(jpeg);
     }
     if (u.hostname === "api.openai.com") {
-      records.push({ kind: "chat", at: Date.now() });
+      const requestInput = JSON.parse(body);
+      records.push({
+        kind: "chat",
+        at: Date.now(),
+        visionDetails: Array.isArray(requestInput.input)
+          ? requestInput.input.flatMap((m) =>
+              Array.isArray(m.content)
+                ? m.content
+                    .filter((c) => c.type === "input_image")
+                    .map((c) => c.detail)
+                : [],
+            )
+          : [],
+      });
       await new Promise((r) => setTimeout(r, controls.delay));
       if (controls.failChat > 0) {
         controls.failChat--;

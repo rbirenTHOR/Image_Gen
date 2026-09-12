@@ -79,13 +79,11 @@ test("Rejected upload keeps the form usable for a corrected image", async ({
     .click();
   await page.getByRole("button", { name: /Add your RV/ }).click();
   const dialog = page.getByRole("dialog");
-  await dialog
-    .getByLabel("Image file")
-    .setInputFiles({
-      name: "not-a-photo.txt",
-      mimeType: "text/plain",
-      buffer: Buffer.from("Invalid image fixture"),
-    });
+  await dialog.getByLabel("Image file").setInputFiles({
+    name: "not-a-photo.txt",
+    mimeType: "text/plain",
+    buffer: Buffer.from("Invalid image fixture"),
+  });
   await dialog
     .getByRole("textbox", { name: "Name", exact: true })
     .fill("Corrected upload " + test.info().project.name);
@@ -148,4 +146,58 @@ test("A failed photo preview can be retried without generating a new image", asy
     "object-fit",
     "contain",
   );
+});
+
+test("Make more lifelike prepares a focused chat edit without paying for images", async ({
+  page,
+}) => {
+  await page
+    .getByRole("navigation")
+    .getByRole("button", { name: "Campaigns", exact: true })
+    .click();
+  await page.getByRole("button", { name: "New campaign", exact: true }).click();
+  await page
+    .getByRole("button", { name: "Add images", exact: true })
+    .first()
+    .click();
+  await page
+    .getByRole("button", {
+      name: "Choose Travel trailer · sample",
+      exact: true,
+    })
+    .click();
+  await page
+    .getByRole("button", { name: "Add to campaign", exact: true })
+    .click();
+  const before = await (
+    await page.request.post("http://127.0.0.1:6199/__control", { data: {} })
+  ).json();
+  await page
+    .getByRole("button", {
+      name: "Inspect Travel trailer · sample",
+      exact: true,
+    })
+    .click();
+  await page
+    .getByRole("button", { name: "Make more lifelike", exact: true })
+    .click();
+  await expect(page.getByRole("dialog")).toBeHidden();
+  await expect(
+    page.getByRole("textbox", { name: "Message your creative partner" }),
+  ).toHaveValue(/Preserve the exact RV/);
+  await expect(page.locator(".composer-references img")).toHaveCount(1);
+  await page.getByRole("button", { name: "Send message" }).click();
+  await expect(page.locator(".assistant-reply")).toHaveCount(1);
+  const after = await (
+    await page.request.post("http://127.0.0.1:6199/__control", { data: {} })
+  ).json();
+  expect(after.records.filter((r: any) => r.kind === "image").length).toBe(
+    before.records.filter((r: any) => r.kind === "image").length,
+  );
+  expect(
+    after.records.filter((r: any) => r.kind === "chat").at(-1).visionDetails,
+  ).toEqual(["high"]);
+  await expect(
+    page.getByRole("button", { name: "Generate 4 images", exact: true }),
+  ).toBeVisible();
 });

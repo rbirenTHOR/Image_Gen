@@ -109,7 +109,7 @@ const defaults: Record<GenerationStage, string> = {
   campaign: "Create a fresh RV campaign photograph.",
   variation: "Refine this campaign image.",
   landscape:
-    "An alpine lake with a naturally level gravel clearing in the foreground, surrounded by tall pines. Warm afternoon light and distant mountain ridges. No people or vehicles.",
+    "A quiet alpine lakeshore photographed from standing height. A usable gravel clearing has uneven small stones and sparse local grass; irregular pines frame the middle distance. Mountain ridges soften naturally with distance. Neutral late-afternoon daylight with gentle warmth, a modest sky and calm water. No people or vehicles.",
   compose:
     "Place the selected RV naturally on the open foreground. Preserve its shape, windows, wheels and graphics. Match the landscape light, perspective and contact shadows. No people or props.",
   people:
@@ -130,7 +130,7 @@ const scenePresets = [
   ],
   [
     "Forest retreat",
-    "An open clearing in a pine forest, distant trees and usable level foreground, natural dappled late-afternoon light. No tents, vehicles, people or human-made objects.",
+    "An open clearing in a pine forest, distant trees and usable level foreground, soft daylight through a broken canopy, irregular branch structures and distinct bark, needles and forest-floor textures. No tents, vehicles, people or human-made objects.",
   ],
 ];
 function Choice({
@@ -311,10 +311,18 @@ export default function Studio() {
     history.replaceState(null, "", url);
   }, [loading, projectId, view, libraryKind]);
   useEffect(() => {
-    const restore = () => {
+    const restore = (event: PopStateEvent) => {
       const params = new URLSearchParams(location.search);
       const id = params.get("project");
-      if (stateRef.current.projects.some((p) => p.id === id)) setProjectId(id!);
+      if (
+        location.pathname === "/" &&
+        stateRef.current.projects.some((p) => p.id === id)
+      ) {
+        // These entries change studio state only. Avoid a second framework navigation
+        // that can abort and remount the app during rapid Back/Forward clicks.
+        event.stopImmediatePropagation();
+        setProjectId(id!);
+      }
       const next = params.get("view") ?? "create";
       setView(
         ["create", "library", "campaigns", "campaign"].includes(next)
@@ -325,8 +333,9 @@ export default function Studio() {
       if (kind && ["rv", "landscape", "prop", "approved"].includes(kind))
         setLibraryKind(kind);
     };
-    window.addEventListener("popstate", restore);
-    return () => window.removeEventListener("popstate", restore);
+    window.addEventListener("popstate", restore, { capture: true });
+    return () =>
+      window.removeEventListener("popstate", restore, { capture: true });
   }, []);
   useEffect(() => {
     setCandidate(

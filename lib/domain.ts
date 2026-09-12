@@ -120,7 +120,10 @@ export const requestSchema = z.object({
   reference_id: z.string().max(100).optional(),
   reference_ids: z.array(z.string().min(1).max(100)).max(4).optional(),
 });
-export const photographicBrief = `Create an authentic commercial outdoor photograph. Natural eye-level camera, realistic 28–35mm perspective and believable scale. Physically plausible sun direction and ground-contact shadows, deep natural depth of field, realistic surface textures, restrained saturation and highlight rolloff. Preserve small photographic imperfections. Avoid CGI appearance, artificial HDR, waxy surfaces, repeated textures, excessive sharpening, exaggerated skies and cinematic color grading.`;
+export const photographicBrief = `Render a believable camera photograph with natural color and ordinary real-world detail. Use one coherent light source, physically consistent shadows, gentle highlight rolloff and believable material reflections. Texture should follow the object and its distance from the camera, rather than look uniformly sharp. Keep subtle irregularities and natural tonal variation. Avoid painterly blending, airbrushed surfaces, CGI gloss, HDR halos and oversharpening. For edits, retain the source camera, exposure and color balance unless the requested change requires otherwise.`;
+export const environmentBrief = `Build a geographically coherent place. Nearby gravel has irregular stone sizes, embedded edges and small contact shadows; soil, grass and rock remain distinct materials. Trees have asymmetric branches and varied spacing, with foliage resolving into plausible clusters rather than repeating stamps or smeared green masses. Rock formations have consistent strata and erosion. Water reflects the actual sky and surroundings with modest surface variation. Foreground detail is more legible than distant detail; distant terrain loses contrast and fine texture gradually through real atmospheric perspective. Keep the horizon, cloud scale and vegetation plausible. Do not add water, trees or mountains when they are absent from the requested setting.`;
+export const promptEnhancementGuide = `Translate the user's intent into concrete photographic instructions, not a list of quality adjectives. Specify the requested place, realistic materials, a coherent light direction and believable spatial relationships. Avoid adding dramatic skies, orange-and-teal grading, excessive golden glow, artificial mist, perfect symmetry or an idealized postcard composition. Preserve explicitly requested weather, time of day and artistic intent. Prefer positive descriptions of the desired result to long negative lists. For existing photos, describe only the requested change and identify what must remain unchanged; do not prescribe a new lens, viewpoint or global lighting by default.`;
+export const realismRefinement = `Make the background look more like a real location photograph. Correct painterly foliage, smeared terrain, overly saturated color and inconsistent light if present. Use believable vegetation, irregular ground textures and natural atmospheric depth. Preserve the exact RV, lettering, graphics, people, objects, layout and viewpoint. Change only the environmental rendering that needs correction; do not invent scenery or sharpen every surface equally.`;
 export function modelFor(stage: GenerationStage) {
   return stage === "people"
     ? PEOPLE_ENDPOINT
@@ -137,24 +140,36 @@ export function buildPrompt(
     campaign:
       "Create a new commercial campaign image from the creative direction. Include only subjects requested by the user. Do not invent brand lettering or product specifications.",
     variation:
-      "Edit image 1 according to the creative direction. Further images, if present, are supporting references in their supplied order, not separate images to edit. Preserve the identity and geometry of any RV, its graphics, windows, doors, wheels and accessories. Change only the requested elements. Use image 1 as the base scene; do not combine unrelated supporting subjects unless requested. Match light, scale, perspective and ground contact.",
+      "Edit image 1 according to the creative direction. Further images, if present, are supporting references in their supplied order, not separate images to edit. Preserve the identity and geometry of any RV, its graphics, windows, doors, wheels and accessories. Change only the requested elements. Use image 1 as the base scene; do not combine unrelated supporting subjects unless requested. Match light, scale, perspective and ground contact. Preserve untouched landscape detail and avoid cumulative smoothing or restyling across edits.",
     landscape:
-      "Create a clean reusable landscape plate. Provide generous relatively level foreground for a large RV. No RVs, vehicles, people, animals, buildings, camping equipment, signs, typography or other man-made objects. Geography and vegetation must be plausible for the described place.",
+      "Create a clean reusable landscape plate. Provide generous relatively level foreground for a large RV. No RVs, vehicles, people, animals, buildings, camping equipment, signs, typography or other man-made objects. Geography and vegetation must be plausible for the described place. Photograph a plausible real location at standing eye level with a normal 35mm perspective and moderate landscape depth of field, approximately f/8. Leave usable ground without turning it into a perfectly smooth or staged platform.",
     compose:
-      "Image 1 is the source RV; image 2 is the selected landscape. Place that exact RV into that landscape, matching camera perspective, scale, light and ground contact. Preserve the RV body geometry, graphics, badges, lettering, windows, doors, wheels, accessories and color as accurately as possible. Keep the landscape composition recognizable. No people or added props. Additional images, if present, are supporting RV reference views.",
+      "Image 1 is the source RV; image 2 is the selected landscape. Place that exact RV into that landscape, matching camera perspective, scale, light and ground contact. Preserve the RV body geometry, graphics, badges, lettering, windows, doors, wheels, accessories and color as accurately as possible. Treat image 2 as the background plate to preserve, not inspiration for a new landscape. Keep its horizon, terrain, vegetation, sky and photographic texture; change only the vehicle footprint, necessary occlusion and local contact shadows. No people or added props. Additional images, if present, are supporting RV reference views.",
     people:
-      "Edit only the requested people into image 1. Preserve the RV, its graphics, landscape, camera viewpoint and composition. Match scale, ambient light, sun direction and shadows. Natural skin texture, realistic hair, candid posture, clothing with believable wrinkles. No waxy skin or exaggerated smiles.",
+      "Edit only the requested people into image 1. Preserve the RV, its graphics, landscape, camera viewpoint and composition. Match scale, ambient light, sun direction and shadows. Natural skin texture, realistic hair, candid posture, clothing with believable wrinkles. Preserve background texture outside the added people and their immediate shadows. No waxy skin or exaggerated smiles.",
     objects:
-      "Edit only the requested physical objects into image 1. Image 2, if present, is a reference for the requested object. Preserve the RV, all existing people, landscape and composition. Match perspective, scale, lighting, occlusion and ground contact. Do not redraw unrelated details.",
+      "Edit only the requested physical objects into image 1. Image 2, if present, is a reference for the requested object. Preserve the RV, all existing people, landscape and composition. Match perspective, scale, lighting, occlusion and ground contact. Do not redraw, soften or regrade unrelated details.",
     prop: "Create a realistic isolated physical prop reference for an RV lifestyle photoshoot. Show the requested object clearly against a simple neutral background. No text, branding or people.",
   };
-  const variations = [
-    "Favor an understated, balanced interpretation.",
-    "Explore a subtly different natural arrangement within the requested brief.",
-    "Explore a different plausible placement within the same framing constraints.",
-    "Explore another restrained photographic interpretation; preserve all required subjects.",
-  ];
-  return `${instructions[stage]}\n\nCREATIVE DIRECTION\n${brief}\n\nPHOTOGRAPHIC STANDARD\n${photographicBrief}\n\nVARIATION ${slot + 1}\n${variations[slot]}`;
+  const isEdit = ["compose", "people", "objects", "variation"].includes(stage);
+  const variations = isEdit
+    ? [
+        "Use a restrained execution of the requested edit; keep the source framing and all untouched scenery.",
+        "Offer a second execution of only the requested change; preserve camera, horizon and untouched textures.",
+        "Offer a subtle alternative within the requested edit area; retain source lighting unless changing it was requested.",
+        "Offer another plausible execution without redesigning the scene or restyling the unedited surroundings.",
+      ]
+    : [
+        "Use a balanced, naturally occurring arrangement with modest visual drama.",
+        "Use a slightly different plausible foreground arrangement without changing the requested weather or region.",
+        "Vary natural spacing and framing subtly; keep ordinary terrain and believable depth.",
+        "Offer another credible location photograph with understated light and irregular natural detail.",
+      ];
+  const environment =
+    stage === "landscape" || stage === "campaign"
+      ? `\n\nENVIRONMENT\n${environmentBrief}`
+      : "";
+  return `${instructions[stage]}\n\nCREATIVE DIRECTION\n${brief}\n\nPHOTOGRAPHIC STANDARD\n${photographicBrief}${environment}\n\nVARIATION ${slot + 1}\n${variations[slot]}`;
 }
 export function providerInput(
   stage: GenerationStage,

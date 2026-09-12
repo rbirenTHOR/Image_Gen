@@ -46,6 +46,7 @@ import { toast } from "sonner";
 import {
   activeStatus,
   generationSizeLabel,
+  realismRefinement,
   type Asset,
   type Project,
   type Batch,
@@ -1385,6 +1386,18 @@ export default function CampaignWorkspace({
                     {compare ? "Single image" : "Compare source"}
                   </Button>
                 )}
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    riff([inspect.id]);
+                    setText(realismRefinement);
+                    setInspect(null);
+                  }}
+                >
+                  <Sparkles />
+                  Make more lifelike
+                </Button>
                 <span>
                   {inspect.width || "Original"}
                   {inspect.height ? " × " + inspect.height : ""}
