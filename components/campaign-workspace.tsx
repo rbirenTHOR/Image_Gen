@@ -652,11 +652,19 @@ export default function CampaignWorkspace({
       <div className="campaign-mobile-switch">
         <Tabs value={mobilePanel} onValueChange={setMobilePanel}>
           <TabsList>
-            <TabsTrigger value="gallery">
+            <TabsTrigger
+              value="gallery"
+              id="campaign-gallery-tab"
+              aria-controls="campaign-gallery"
+            >
               <Images />
               Gallery
             </TabsTrigger>
-            <TabsTrigger value="chat">
+            <TabsTrigger
+              value="chat"
+              id="campaign-chat-tab"
+              aria-controls="campaign-chat"
+            >
               <MessageSquare />
               Creative chat
             </TabsTrigger>
@@ -664,7 +672,12 @@ export default function CampaignWorkspace({
         </Tabs>
       </div>
       <div className={"campaign-workspace mobile-" + mobilePanel}>
-        <main className="campaign-gallery">
+        <main
+          className="campaign-gallery"
+          id="campaign-gallery"
+          role="tabpanel"
+          aria-labelledby="campaign-gallery-tab"
+        >
           <div className="campaign-breadcrumb">
             <button onClick={() => onNav("campaigns")}>
               <ArrowLeft size={15} />
@@ -715,7 +728,8 @@ export default function CampaignWorkspace({
                 </h1>
               )}
               <p>
-                {data.saved_ids.length} saved images
+                {data.saved_ids.length} saved{" "}
+                {data.saved_ids.length === 1 ? "image" : "images"}
                 {busyJobs.length > 0 && (
                   <span className="generation-count">
                     <LoaderCircle className="spinner" size={13} />
@@ -744,10 +758,18 @@ export default function CampaignWorkspace({
               }}
             >
               <TabsList variant="line">
-                <TabsTrigger value="saved">
+                <TabsTrigger
+                  value="saved"
+                  id="gallery-tab-saved"
+                  aria-controls="campaign-results"
+                >
                   Saved <span>{data.saved_ids.length}</span>
                 </TabsTrigger>
-                <TabsTrigger value="all">
+                <TabsTrigger
+                  value="all"
+                  id="gallery-tab-all"
+                  aria-controls="campaign-results"
+                >
                   All takes <span>{projectAssets.length}</span>
                 </TabsTrigger>
               </TabsList>
@@ -769,186 +791,197 @@ export default function CampaignWorkspace({
                 : "Select all"}
             </Button>
           </div>
-          {error && (
-            <div className="campaign-error" role="alert">
-              {error}
-              <Button
-                variant="ghost"
-                onClick={() =>
-                  reload()
-                    .then(() => setError(""))
-                    .catch(fail)
-                }
-              >
-                Reconnect
-              </Button>
-            </div>
-          )}
-          {selected.length > 0 && (
-            <div className="gallery-selection">
-              <strong>{selected.length} selected</strong>
-              <Button
-                size="sm"
-                variant="secondary"
-                onClick={() => riff(selected)}
-                disabled={selected.length > 4}
-              >
-                <Sparkles />
-                Use as references
-              </Button>
-              <Button
-                size="sm"
-                onClick={() => save(selected)}
-                disabled={saving}
-              >
-                <Bookmark />
-                Save to campaign
-              </Button>
-              {tab === "saved" && (
+          <div
+            id="campaign-results"
+            role="tabpanel"
+            aria-labelledby={"gallery-tab-" + tab}
+          >
+            {error && (
+              <div className="campaign-error" role="alert">
+                {error}
                 <Button
                   variant="ghost"
+                  onClick={() =>
+                    reload()
+                      .then(() => setError(""))
+                      .catch(fail)
+                  }
+                >
+                  Reconnect
+                </Button>
+              </div>
+            )}
+            {selected.length > 0 && (
+              <div className="gallery-selection">
+                <strong>{selected.length} selected</strong>
+                <Button
                   size="sm"
-                  onClick={() => save(selected, false)}
+                  variant="secondary"
+                  onClick={() => riff(selected)}
+                  disabled={selected.length > 4}
+                >
+                  <Sparkles />
+                  Use as references
+                </Button>
+                <Button
+                  size="sm"
+                  onClick={() => save(selected)}
                   disabled={saving}
                 >
-                  Remove
+                  <Bookmark />
+                  Save to campaign
                 </Button>
-              )}
-              <Button
-                variant="ghost"
-                size="icon"
-                aria-label="Clear selected images"
-                onClick={() => setSelected([])}
-              >
-                <X />
-              </Button>
-            </div>
-          )}
-          {loading ? (
-            <div className="campaign-gallery-grid">
-              {[0, 1, 2, 3].map((i) => (
-                <Skeleton className="h-64" key={i} />
-              ))}
-            </div>
-          ) : gallery.length ? (
-            <div className="campaign-gallery-grid">
-              {gallery.map((a) => (
-                <article
-                  className={
-                    "campaign-image-card " +
-                    (selected.includes(a.id) ? "checked" : "")
-                  }
-                  key={a.id}
-                >
-                  <div className="campaign-image-visual">
-                    <Photo asset={a} />
-                    <button
-                      className="image-open-target"
-                      aria-label={"Inspect " + a.name}
-                      onClick={() => openImage(a)}
-                    />
-                    <div className="image-selection-checkbox">
-                      <Checkbox
-                        aria-label={"Select " + a.name}
-                        checked={selected.includes(a.id)}
-                        onCheckedChange={() => toggle(a.id)}
-                      />
-                    </div>
-                    <button
-                      className={
-                        "image-save-button " +
-                        (savedSet.has(a.id) ? "is-saved" : "")
-                      }
-                      aria-label={
-                        (savedSet.has(a.id) ? "Remove saved " : "Save ") +
-                        a.name
-                      }
-                      disabled={saving}
-                      onClick={() => save([a.id], !savedSet.has(a.id))}
-                    >
-                      {savedSet.has(a.id) ? (
-                        <Bookmark fill="currentColor" size={17} />
-                      ) : (
-                        <Bookmark size={17} />
-                      )}
-                    </button>
-                    {a.approved === 1 && (
-                      <span className="image-approved">
-                        <Check size={12} />
-                        Approved
-                      </span>
-                    )}
-                    <button
-                      className="riff-button"
-                      onClick={() => riff([a.id])}
-                    >
-                      <Sparkles size={15} />
-                      Riff on this
-                    </button>
-                  </div>
-                  <div className="campaign-image-caption">
-                    <strong>{a.name}</strong>
-                    <span>
-                      {a.parent_id
-                        ? "Variation"
-                        : a.source === "uploaded"
-                          ? "Uploaded"
-                          : a.source === "ai-sample"
-                            ? "AI sample"
-                            : a.quality === "max"
-                              ? "2.5 Max"
-                              : a.kind}
-                    </span>
-                  </div>
-                </article>
-              ))}
-            </div>
-          ) : (
-            <div className="campaign-empty-state">
-              <div className="empty-image-stack">
-                <Images />
-              </div>
-              <h2>
-                {tab === "saved"
-                  ? "Collect the keepers."
-                  : "A new direction starts here."}
-              </h2>
-              <p>
-                {tab === "saved"
-                  ? "Save as many images as you like. Add from your library, upload photos, or explore ideas in chat."
-                  : "Describe your idea in Creative chat, or build a scene with your RV and a landscape."}
-              </p>
-              <div className="button-row">
-                <Button
-                  onClick={() => {
-                    setPicked([]);
-                    setPicker("save");
-                  }}
-                >
-                  <Plus />
-                  Add images
-                </Button>
-                {projectAssets.length > 0 ? (
-                  <Button variant="outline" onClick={() => setTab("all")}>
-                    Browse {projectAssets.length} takes
-                  </Button>
-                ) : (
+                {tab === "saved" && (
                   <Button
-                    variant="outline"
-                    onClick={() => {
-                      setMobilePanel("chat");
-                      composer.current?.focus();
-                    }}
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => save(selected, false)}
+                    disabled={saving}
                   >
-                    <Sparkles />
-                    Start an idea
+                    Remove
                   </Button>
                 )}
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  aria-label="Clear selected images"
+                  onClick={() => setSelected([])}
+                >
+                  <X />
+                </Button>
               </div>
-            </div>
-          )}
+            )}
+            {loading ? (
+              <div className="campaign-gallery-grid">
+                {[0, 1, 2, 3].map((i) => (
+                  <Skeleton className="h-64" key={i} />
+                ))}
+              </div>
+            ) : gallery.length ? (
+              <div className="campaign-gallery-grid">
+                {gallery.map((a) => (
+                  <article
+                    className={
+                      "campaign-image-card " +
+                      (selected.includes(a.id) ? "checked" : "")
+                    }
+                    key={a.id}
+                  >
+                    <div className="campaign-image-visual">
+                      <Photo asset={a} />
+                      <button
+                        className="image-open-target"
+                        aria-label={"Inspect " + a.name}
+                        onClick={() => openImage(a)}
+                      />
+                      <div className="image-selection-checkbox">
+                        <Checkbox
+                          aria-label={"Select " + a.name}
+                          checked={selected.includes(a.id)}
+                          onCheckedChange={() => toggle(a.id)}
+                        />
+                      </div>
+                      <button
+                        className={
+                          "image-save-button " +
+                          (savedSet.has(a.id) ? "is-saved" : "")
+                        }
+                        aria-label={
+                          (savedSet.has(a.id) ? "Remove saved " : "Save ") +
+                          a.name
+                        }
+                        disabled={saving}
+                        onClick={() => save([a.id], !savedSet.has(a.id))}
+                      >
+                        {savedSet.has(a.id) ? (
+                          <Bookmark fill="currentColor" size={17} />
+                        ) : (
+                          <Bookmark size={17} />
+                        )}
+                      </button>
+                      {a.approved === 1 && (
+                        <span className="image-approved">
+                          <Check size={12} />
+                          Approved
+                        </span>
+                      )}
+                      <button
+                        className="riff-button"
+                        onClick={() => riff([a.id])}
+                      >
+                        <Sparkles size={15} />
+                        Riff on this
+                      </button>
+                    </div>
+                    <div className="campaign-image-caption">
+                      <strong>{a.name}</strong>
+                      <span>
+                        {a.parent_id
+                          ? "Variation"
+                          : a.source === "uploaded"
+                            ? "Uploaded"
+                            : a.source === "ai-sample"
+                              ? "AI sample"
+                              : a.quality === "max"
+                                ? "2.5 Max"
+                                : a.kind}
+                      </span>
+                    </div>
+                  </article>
+                ))}
+              </div>
+            ) : (
+              <div className="campaign-empty-state">
+                <div className="empty-image-stack">
+                  <Images />
+                </div>
+                <h2>
+                  {tab === "saved"
+                    ? "Collect the keepers."
+                    : "A new direction starts here."}
+                </h2>
+                <p>
+                  {tab === "saved"
+                    ? "Save as many images as you like. Add from your library, upload photos, or explore ideas in chat."
+                    : "Describe your idea in Creative chat, or build a scene with your RV and a landscape."}
+                </p>
+                <div className="button-row">
+                  <Button
+                    onClick={() => {
+                      setPicked([]);
+                      setPicker("save");
+                    }}
+                  >
+                    <Plus />
+                    Add images
+                  </Button>
+                  {projectAssets.length > 0 ? (
+                    <Button variant="outline" onClick={() => setTab("all")}>
+                      Browse {projectAssets.length} takes
+                    </Button>
+                  ) : (
+                    <Button
+                      variant="outline"
+                      onClick={() => {
+                        setMobilePanel("chat");
+                        composer.current?.focus();
+                      }}
+                    >
+                      <Sparkles />
+                      Start an idea
+                    </Button>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
         </main>
-        <aside className="creative-chat" aria-label="Campaign creative chat">
+        <aside
+          className="creative-chat"
+          id="campaign-chat"
+          role="tabpanel"
+          aria-labelledby="campaign-chat-tab"
+        >
           <div className="chat-heading">
             <div className="chat-symbol">
               <Sparkles size={20} />

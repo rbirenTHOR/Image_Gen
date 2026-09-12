@@ -382,12 +382,13 @@
 .campaign-photo img {
   width: 100%;
   height: 100%;
-  object-fit: cover;
+  object-fit: contain;
   display: block;
+  background: var(--secondary);
   transition: transform 0.35s;
 }
 .campaign-image-card:hover .campaign-photo img {
-  transform: scale(1.025);
+  transform: none;
 }
 .campaign-photo-status {
   position: absolute;

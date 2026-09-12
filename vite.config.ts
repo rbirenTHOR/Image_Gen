@@ -53,7 +53,11 @@ export default defineConfig(async () => {
   return {
     server: {
       ...(managedLinux ? { host: "0.0.0.0", allowedHosts: ["terminal.local"] } : {}),
-      ...(isCodexSeatbeltSandbox ? { watch: { useFsEvents: false, usePolling: true } } : {}),
+      watch: {
+        // Browser evidence is not app source; recording traces must not reload a live preview.
+        ignored: ["**/output/**", "**/.playwright-cli/**"],
+        ...(isCodexSeatbeltSandbox ? { useFsEvents: false, usePolling: true } : {}),
+      },
     },
     plugins: [
       vinext(),

@@ -268,8 +268,16 @@ export default function Studio() {
             data.projects[0]?.id ??
             "",
         );
-        if (new URLSearchParams(location.search).get("view") === "campaign")
-          setView("campaign");
+        const params = new URLSearchParams(location.search);
+        const wantedView = params.get("view") ?? "create";
+        if (["create", "library", "campaigns", "campaign"].includes(wantedView))
+          setView(wantedView);
+        const wantedKind = params.get("kind");
+        if (
+          wantedKind &&
+          ["rv", "landscape", "prop", "approved"].includes(wantedKind)
+        )
+          setLibraryKind(wantedKind);
       })
       .catch((e) => {
         if (e.message === "SIGN_IN") setSignIn(true);
@@ -288,13 +296,38 @@ export default function Studio() {
       .catch((e) => {
         if (!cancelled) fail(e);
       });
-    const url = new URL(location.href);
-    url.searchParams.set("project", projectId);
-    history.replaceState(null, "", url);
     return () => {
       cancelled = true;
     };
   }, [projectId, fail]);
+  useEffect(() => {
+    if (loading || !projectId) return;
+    const url = new URL(location.href);
+    url.searchParams.set("project", projectId);
+    if (view === "create") url.searchParams.delete("view");
+    else url.searchParams.set("view", view);
+    if (view === "library") url.searchParams.set("kind", libraryKind);
+    else url.searchParams.delete("kind");
+    history.replaceState(null, "", url);
+  }, [loading, projectId, view, libraryKind]);
+  useEffect(() => {
+    const restore = () => {
+      const params = new URLSearchParams(location.search);
+      const id = params.get("project");
+      if (stateRef.current.projects.some((p) => p.id === id)) setProjectId(id!);
+      const next = params.get("view") ?? "create";
+      setView(
+        ["create", "library", "campaigns", "campaign"].includes(next)
+          ? next
+          : "create",
+      );
+      const kind = params.get("kind");
+      if (kind && ["rv", "landscape", "prop", "approved"].includes(kind))
+        setLibraryKind(kind);
+    };
+    window.addEventListener("popstate", restore);
+    return () => window.removeEventListener("popstate", restore);
+  }, []);
   useEffect(() => {
     setCandidate(
       stage === "rv"
@@ -351,6 +384,17 @@ export default function Studio() {
   }, [batches, refresh]);
   const replaceProject = (p: Project) =>
     setProjects((old) => old.map((x) => (x.id === p.id ? p : x)));
+  function prerequisite(next: Stage) {
+    if (next !== "rv" && !project?.rv_id) return "Choose an RV first";
+    if (
+      ["compose", "lifestyle", "review"].includes(next) &&
+      !project?.landscape_id
+    )
+      return "Choose a setting first";
+    if (["lifestyle", "review"].includes(next) && !project?.composition_id)
+      return "Choose a photograph first";
+    return "";
+  }
   async function changeStage(next: Stage) {
     if (!project) return;
     try {
@@ -796,7 +840,7 @@ export default function Studio() {
               }
             >
               {a.campaign_ids?.includes(project.id) ? <Check /> : <Save />}
-              {a.campaign_ids?.includes(project.id) ? "Saved" : "Keep"}
+              {a.campaign_ids?.includes(project.id) ? "Saved" : "Save"}
             </Button>
           )}
           <span>
@@ -882,6 +926,10 @@ export default function Studio() {
               : ""}
           </span>
         </div>
+        <p className="selection-help">
+          Save any photos you like to your campaign. Select one photo to
+          continue editing.
+        </p>
         <Progress
           value={ready * 25}
           aria-label={`${ready} of 4 images ready`}
@@ -1193,6 +1241,22 @@ export default function Studio() {
             />
           )}
         </div>
+        {!libraryAssets.length && (query || filter !== "all") && (
+          <div className="empty-state" role="status">
+            <Search />
+            <h2>No matching images</h2>
+            <p>Try another name or clear your search and filters.</p>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setQuery("");
+                setFilter("all");
+              }}
+            >
+              Clear search
+            </Button>
+          </div>
+        )}
         <div
           className={
             "library-grid " +
@@ -1264,14 +1328,16 @@ export default function Studio() {
   function navigate(next: string) {
     setView(next);
     const url = new URL(location.href);
-    if (next === "campaign") url.searchParams.set("view", "campaign");
+    if (next !== "create") url.searchParams.set("view", next);
     else url.searchParams.delete("view");
-    history.replaceState(null, "", url);
+    if (next === "library") url.searchParams.set("kind", libraryKind);
+    else url.searchParams.delete("kind");
+    if (url.toString() !== location.href) history.pushState(null, "", url);
   }
   if (view === "campaign" && project)
     return (
       <>
-        <Toaster richColors position="bottom-right" />
+        <Toaster theme="system" richColors position="top-right" />
         <CampaignWorkspace
           key={project.id}
           project={project}
@@ -1289,7 +1355,7 @@ export default function Studio() {
   if (view === "campaigns")
     return (
       <>
-        <Toaster richColors position="bottom-right" />
+        <Toaster theme="system" richColors position="top-right" />
         <CampaignHome
           projects={projects}
           assets={assets}
@@ -1334,11 +1400,11 @@ export default function Studio() {
           ][stageIndex];
   return (
     <div className="studio">
-      <Toaster richColors position="bottom-right" />
+      <Toaster theme="system" richColors position="top-right" />
       <header className="topbar">
         <button
           className="brand"
-          onClick={() => setView("create")}
+          onClick={() => navigate("create")}
           aria-label="THOR Studio home"
         >
           <Mountain />
@@ -1350,7 +1416,7 @@ export default function Studio() {
               key={v}
               className={view === v ? "active" : ""}
               onClick={() => {
-                setView(v);
+                navigate(v);
                 setQuery("");
                 setFilter("all");
                 setTab("library");
@@ -1388,13 +1454,18 @@ export default function Studio() {
                       (view === "create" && stage === s ? "current" : "")
                     }
                     onClick={() => changeStage(s)}
+                    disabled={!!prerequisite(s)}
+                    title={prerequisite(s) || stageHints[i]}
+                    aria-current={
+                      view === "create" && stage === s ? "step" : undefined
+                    }
                   >
                     <span className="step-number">
                       {i < stageIndex ? <Check size={13} /> : i + 1}
                     </span>
                     <span>
                       <strong>{stageLabels[i]}</strong>
-                      <small>{stageHints[i]}</small>
+                      <small>{prerequisite(s) || stageHints[i]}</small>
                     </span>
                   </button>
                 ))}
@@ -1448,6 +1519,9 @@ export default function Studio() {
                 aria-label={stageLabels[i]}
                 className={stage === s ? "current" : ""}
                 onClick={() => changeStage(s)}
+                disabled={!!prerequisite(s)}
+                title={prerequisite(s) || stageHints[i]}
+                aria-current={stage === s ? "step" : undefined}
               >
                 {i + 1}
                 <span>{stageLabels[i]}</span>
@@ -1558,10 +1632,34 @@ export default function Studio() {
               }}
             >
               <TabsList variant="line">
-                <TabsTrigger value="rv">RVs</TabsTrigger>
-                <TabsTrigger value="landscape">Landscapes</TabsTrigger>
-                <TabsTrigger value="prop">Objects</TabsTrigger>
-                <TabsTrigger value="approved">Approved</TabsTrigger>
+                <TabsTrigger
+                  value="rv"
+                  id="library-tab-rv"
+                  aria-controls="library-panel"
+                >
+                  RVs
+                </TabsTrigger>
+                <TabsTrigger
+                  value="landscape"
+                  id="library-tab-landscape"
+                  aria-controls="library-panel"
+                >
+                  Landscapes
+                </TabsTrigger>
+                <TabsTrigger
+                  value="prop"
+                  id="library-tab-prop"
+                  aria-controls="library-panel"
+                >
+                  Objects
+                </TabsTrigger>
+                <TabsTrigger
+                  value="approved"
+                  id="library-tab-approved"
+                  aria-controls="library-panel"
+                >
+                  Approved
+                </TabsTrigger>
               </TabsList>
               <div className="library-actions">
                 {["landscape", "prop"].includes(libraryKind) && (
@@ -1580,7 +1678,13 @@ export default function Studio() {
                   </Button>
                 )}
               </div>
-              {tab === "generate" ? generator() : library()}
+              <div
+                id="library-panel"
+                role="tabpanel"
+                aria-labelledby={"library-tab-" + libraryKind}
+              >
+                {tab === "generate" ? generator() : library()}
+              </div>
             </Tabs>
           ) : stage === "rv" ? (
             <>
@@ -1685,7 +1789,7 @@ export default function Studio() {
                   }
                   onClick={() => candidate && selectImage(candidate, "compose")}
                 >
-                  Keep this photograph
+                  Continue with this photo
                   <ArrowRight />
                 </Button>
               </footer>
@@ -1710,10 +1814,28 @@ export default function Studio() {
                 onValueChange={(v) => setGeneration(v as GenerationStage)}
               >
                 <TabsList variant="line">
-                  <TabsTrigger value="people">People</TabsTrigger>
-                  <TabsTrigger value="objects">Objects</TabsTrigger>
+                  <TabsTrigger
+                    value="people"
+                    id="additions-tab-people"
+                    aria-controls="additions-panel"
+                  >
+                    People
+                  </TabsTrigger>
+                  <TabsTrigger
+                    value="objects"
+                    id="additions-tab-objects"
+                    aria-controls="additions-panel"
+                  >
+                    Objects
+                  </TabsTrigger>
                 </TabsList>
-                {generator()}
+                <div
+                  id="additions-panel"
+                  role="tabpanel"
+                  aria-labelledby={"additions-tab-" + generation}
+                >
+                  {generator()}
+                </div>
               </Tabs>
               <footer className="workspace-footer">
                 <div>
@@ -1743,7 +1865,7 @@ export default function Studio() {
                       candidate && selectImage(candidate, "lifestyle")
                     }
                   >
-                    Keep this version
+                    Use this version
                     <Check />
                   </Button>
                 </div>
