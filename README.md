@@ -2,6 +2,16 @@
 
 An authenticated RV marketing studio using the selected Option B design: warm ivory, terracotta, editorial typography and a five-step campaign workflow.
 
+## Campaign gallery and creative chat
+
+Open **Campaigns** and choose a campaign to enter its gallery and chat workspace. Save any number of images independently of the wizard's current selection. Each take has a Keep action in the wizard, and entire completed batches can be saved together. Existing accepted and approved images are brought into the gallery when first opened; other old results remain available under All takes.
+
+Select several gallery pictures with their checkboxes to save them together or attach up to four references. **Riff on this** attaches a single photo as the base. The first reference is the image to edit; additional references guide the result. **New image** clears the references. The creative partner inspects attached images, considers recent discussion, and returns an editable enhanced prompt. **Generate 4 images** submits four independent Max requests. Save individual results or all completed images, then continue the conversation with a chosen result. Chat history and provider receipts survive reloads. Text entered while a reply is pending is retained.
+
+Campaign chat uses Sunburst Max for all image operations, including people when requested. A reference-backed variation uses the fal edit endpoint; a new image uses text-to-image. Chat planning uses the existing OpenAI text connection. It never submits image generation automatically. Each generated image has its own source lineage and can be saved, inspected, approved and downloaded without changing the wizard's current take. The wizard remains available through Build a scene / Create.
+
+The Add images dialog supports multi-select library imports and up to ten uploads at once. Removing an image from the gallery removes only its membership; its original file, history and other campaign memberships remain intact. Approval is separate from saving. Campaign upload originals and generated masters are preserved.
+
 ## Workflow
 
 1. Select an RV reference from the library or upload a JPG, PNG or WebP (maximum 12 MB). Original files and brand/model/year/angle metadata are preserved.
@@ -68,3 +78,11 @@ Browser QA covers uploads and metadata search, selection checkpoints, desktop/mo
 ## Deployment
 
 This checkout is registered to the existing Sites project in `.openai/hosting.json`. Preserve that project ID. Hosted secrets are `FAL_KEY`, `OPENAI_API_KEY` and optional `PROMPT_MODEL`. Do not create another Site for updates. Commit and push the exact source state, build and package it with the Sites helpers, save that commit/archive as a version, then deploy while preserving the audience. SQL migrations in `drizzle/` are part of the deployment.
+
+## Campaign release audit
+
+The campaign extension uses additive migration `0001_huge_slipstream.sql`: gallery memberships, durable chat turns, and a constant-default initialization flag. Previous migrations are unchanged. The gallery backfill runs once per campaign and respects removed-entry tombstones.
+
+`tests/campaign-flow.py` is a resumable paid integration audit: eight fal images plus OpenAI conversation requests. It tests multiple saved pictures, idempotence, reference validation, new image and edit routing at Max, source lineage, independent approval and conversation persistence. Preserve `work/campaign-test-report.json` when resuming. `tests/campaign-safety.py` checks authentication, ownership, bulk validation, immutable submitted directions, explicit bases, approval rules and interrupted-reply recovery using local fixtures. The existing wizard domain and API tests remain applicable.
+
+Campaign browser QA covers ordered multi-reference selection, live chat, draft preservation during replies, two-photo uploads, reload persistence, desktop/mobile layout, image review and campaign reopening. Native WebMCP remains guarded when unavailable in the browser.
