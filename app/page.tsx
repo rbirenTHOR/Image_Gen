@@ -141,14 +141,16 @@ function Choice({
   onChange,
   options,
   label,
+  disabled = false,
 }: {
   value: string;
   onChange: (v: string) => void;
   options: [string, string][];
   label: string;
+  disabled?: boolean;
 }) {
   return (
-    <Select value={value} onValueChange={onChange}>
+    <Select value={value} onValueChange={onChange} disabled={disabled}>
       <SelectTrigger aria-label={label}>
         <SelectValue />
       </SelectTrigger>
@@ -186,6 +188,7 @@ export default function Studio() {
     [groundFilter, setGroundFilter] = useState("all"),
     [generation, setGeneration] = useState<GenerationStage>("people"),
     [aspect, setAspect] = useState("landscape_4_3"),
+    [imageCount, setImageCount] = useState(2),
     [briefs, setBriefs] = useState(defaults),
     [enhanced, setEnhanced] = useState<
       Partial<Record<GenerationStage, string>>
@@ -478,6 +481,7 @@ export default function Studio() {
       stage: genStage,
       prompt,
       aspect,
+      count: imageCount,
       ...(reference !== "none" && genStage === "objects"
         ? { reference_id: reference }
         : {}),
@@ -497,7 +501,7 @@ export default function Studio() {
       quality: genStage === "people" ? "native" : "max",
       created_at: Date.now(),
       inputs_json: "[]",
-      jobs: [0, 1, 2, 3].map((slot) => ({
+      jobs: Array.from({length:imageCount}, (_,slot) => ({
         id: id + "-" + slot,
         batch_id: id,
         slot,
@@ -516,7 +520,7 @@ export default function Studio() {
     try {
       const result = await api<Batch>("batches", payload);
       setBatches((old) => old.map((b) => (b.id === id ? result : b)));
-      toast.success("Four image requests submitted");
+      toast.success(`${result.jobs.length} image request${result.jobs.length === 1 ? "" : "s"} submitted`);
     } catch (e) {
       try {
         const existing = await api<Batch>("batches/" + id);
@@ -938,19 +942,19 @@ export default function Studio() {
             Save all ready
           </Button>
           <span aria-live="polite">
-            {ready} of 4 ready
+            {ready} of {b.jobs.length} ready
             {b.jobs.some((j) => activeStatus(j.status))
               ? " · " + formatElapsed(now - b.created_at)
               : ""}
           </span>
         </div>
         <p className="selection-help">
-          {b.stage === "compose" && b.jobs.some(j => j.shot_label) ? b.jobs.every(j => j.shot_label?.startsWith("Preset ·")) ? "Automatic scene assessment was unavailable. Using four placement presets with your source photos. " : "Four placements planned from your RV and backdrop. " : ""}Save any photos you like to your campaign. Select one photo to
+          {b.stage === "compose" && b.jobs.some(j => j.shot_label) ? b.jobs.every(j => j.shot_label?.startsWith("Preset ·")) ? `Automatic scene assessment was unavailable. Using ${b.jobs.length} conservative placement preset${b.jobs.length === 1 ? "" : "s"} with your source photos. ` : `${b.jobs.length} placement${b.jobs.length === 1 ? "" : "s"} planned from your RV and backdrop. ` : ""}Save any photos you like to your campaign. Select one photo to
           continue editing.
         </p>
         <Progress
-          value={ready * 25}
-          aria-label={`${ready} of 4 images ready`}
+          value={b.jobs.length ? ready / b.jobs.length * 100 : 0}
+          aria-label={`${ready} of ${b.jobs.length} images ready`}
           className="batch-progress"
         />
         <div className="results-grid">
@@ -1154,6 +1158,7 @@ export default function Studio() {
               />
             </div>
           )}
+          {genStage === "compose" && <p className="selection-help">For a natural fit, use a backdrop with visible level ground and an RV photo taken from a similar camera height. Scale follows the scene’s depth; distant RVs stay distant.</p>}
           <div className="generate-footer">
             <div>
               <Choice
@@ -1167,10 +1172,11 @@ export default function Studio() {
                   ["portrait_4_3", "Portrait · 3:4"],
                 ]}
               />
+              <Choice value={String(imageCount)} onChange={v=>setImageCount(Number(v))} label="Number of images" options={[["1","1 image"],["2","2 images"],["3","3 images"],["4","4 images"]]} disabled={submitting}/>
               <small>
                 {genStage === "people"
-                  ? "Four images billed by fal."
-                  : `${generationSizeLabel(aspect)}. Four Max images via fal.`}{" "}
+                  ? `${imageCount} image${imageCount === 1 ? "" : "s"} billed by fal.`
+                  : `${generationSizeLabel(aspect)}. ${imageCount} Max image${imageCount === 1 ? "" : "s"} via fal.`}{" "}
                 Higher resolution takes longer and may cost more.
               </small>
             </div>
@@ -1180,15 +1186,15 @@ export default function Studio() {
                 submitting ||
                 !connected.fal ||
                 (enhanced[genStage] || briefs[genStage]).length < 10 ||
-                activeCount >= 8
+                activeCount + imageCount > 8
               }
             >
               {submitting ? <LoaderCircle className="spinner" /> : <Sparkles />}
               {genStage === "landscape"
-                ? "Create 4 landscapes"
+                ? `Create ${imageCount} landscape${imageCount === 1 ? "" : "s"}`
                 : genStage === "prop"
-                  ? "Create 4 objects"
-                  : "Generate 4 takes"}
+                  ? `Create ${imageCount} object${imageCount === 1 ? "" : "s"}`
+                  : `Generate ${imageCount} take${imageCount === 1 ? "" : "s"}`}
             </Button>
           </div>
         </section>

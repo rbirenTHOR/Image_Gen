@@ -51,7 +51,7 @@ async function setting(page: Page) {
     .click();
 }
 async function ready(page: Page) {
-  await expect(page.getByText("4 of 4 ready", { exact: true })).toBeVisible({
+  await expect(page.getByText("2 of 2 ready", { exact: true })).toBeVisible({
     timeout: 30000,
   });
 }
@@ -60,6 +60,7 @@ async function gallery(page: Page) {
   await page.locator(".campaign-board").first().click();
 }
 async function chat(page: Page) {
+  await expect(page.locator('textarea[aria-label="Message your creative partner"]')).toBeAttached();
   const tab = page.getByRole("tab", { name: "Creative chat", exact: true });
   if (await tab.isVisible()) await tab.click();
 }
@@ -153,7 +154,7 @@ test("Sign-in explains private access and opens the studio", async ({
   await expect(page.getByRole("navigation")).toBeVisible();
   await evidence(page, "signed-in");
 });
-test("Complete wizard: upload, prompt, four choices, people, objects, approval and export", async ({
+test("Complete wizard: upload, prompt, two choices, people, objects, approval and export", async ({
   page,
 }) => {
   const reference = "Journey reference " + test.info().project.name;
@@ -202,8 +203,8 @@ test("Complete wizard: upload, prompt, four choices, people, objects, approval a
   const before = (await control(page)).records.filter(
     (r: any) => r.kind === "image",
   ).length;
-  await page.getByRole("button", { name: "Create 4 landscapes" }).click();
-  await expect(page.getByText("0 of 4 ready", { exact: false })).toBeVisible();
+  await page.getByRole("button", { name: "Create 2 landscapes" }).click();
+  await expect(page.getByText("0 of 2 ready", { exact: false })).toBeVisible();
   await page.reload();
   await page.getByRole("tab", { name: "Generate a setting" }).click();
   await ready(page);
@@ -211,7 +212,7 @@ test("Complete wizard: upload, prompt, four choices, people, objects, approval a
   const requests = (await control(page)).records
     .filter((r: any) => r.kind === "image")
     .slice(before);
-  expect(requests).toHaveLength(4);
+  expect(requests).toHaveLength(2);
   expect(
     Math.max(...requests.map((r: any) => r.at)) -
       Math.min(...requests.map((r: any) => r.at)),
@@ -227,7 +228,7 @@ test("Complete wizard: upload, prompt, four choices, people, objects, approval a
   await page
     .getByRole("button", { name: "Compose your photograph", exact: true })
     .click();
-  await page.getByRole("button", { name: "Generate 4 takes" }).click();
+  await page.getByRole("button", { name: "Generate 2 takes" }).click();
   await ready(page);
   await page.getByRole("button", { name: "Save all ready" }).click();
   await page
@@ -240,7 +241,7 @@ test("Complete wizard: upload, prompt, four choices, people, objects, approval a
     .click();
   await page.getByLabel("Adults", { exact: true }).fill("2");
   await page.getByLabel("Children", { exact: true }).fill("0");
-  await page.getByRole("button", { name: "Generate 4 takes" }).click();
+  await page.getByRole("button", { name: "Generate 2 takes" }).click();
   await ready(page);
   await page
     .getByRole("button", { name: "Select People · Take 1", exact: true })
@@ -254,7 +255,7 @@ test("Complete wizard: upload, prompt, four choices, people, objects, approval a
     .fill(
       "Add two folding chairs beside the RV. Preserve all existing people and vehicle details.",
     );
-  await page.getByRole("button", { name: "Generate 4 takes" }).click();
+  await page.getByRole("button", { name: "Generate 2 takes" }).click();
   await ready(page);
   await page
     .getByRole("button", { name: "Select Objects · Take 1", exact: true })
@@ -361,6 +362,11 @@ test("Campaign collection: multiple photos, ordered references, chat, variations
   await expect(
     page.getByRole("textbox", { name: "Message your creative partner" }),
   ).toHaveValue("Keep this draft while the reply arrives.");
+  await expect(page.getByLabel("Number of images")).toHaveValue("2");
+  await page.getByLabel("Number of images").selectOption("4");
+  await page.reload();
+  await chat(page);
+  await expect(page.getByLabel("Number of images")).toHaveValue("4");
   await page
     .getByRole("button", { name: "Generate 4 images", exact: true })
     .click();
@@ -395,7 +401,7 @@ test("Recovery: failed generation retries one slot and interrupted saving never 
   const before = (await control(page)).records.filter(
     (r: any) => r.kind === "image",
   ).length;
-  await page.getByRole("button", { name: "Generate 4 takes" }).click();
+  await page.getByRole("button", { name: "Generate 2 takes" }).click();
   await expect(
     page.getByText("Generation failed", { exact: true }),
   ).toBeVisible();
@@ -406,13 +412,13 @@ test("Recovery: failed generation retries one slot and interrupted saving never 
   expect(
     (await control(page)).records.filter((r: any) => r.kind === "image")
       .length - before,
-  ).toBe(4);
+  ).toBe(2);
   await page.getByRole("button", { name: "Retry this image" }).click();
   await ready(page);
   expect(
     (await control(page)).records.filter((r: any) => r.kind === "image")
       .length - before,
-  ).toBe(5);
+  ).toBe(3);
 });
 test("Recovery: failed chat retains the message and retries without generating images", async ({
   page,

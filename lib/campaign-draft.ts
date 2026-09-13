@@ -4,6 +4,7 @@ const draftSchema = z.object({
   text: z.string().max(6000),
   refs: z.array(z.string().min(1).max(100)).max(4),
   promptEdits: z.record(z.string().max(12000)),
+  counts: z.record(z.number().int().min(1).max(4)).default({}),
   aspects: z.record(
     z.enum(["landscape_4_3", "landscape_16_9", "square_hd", "portrait_4_3"]),
   ),

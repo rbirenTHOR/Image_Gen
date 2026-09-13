@@ -206,6 +206,8 @@ const provider = createServer(async (req, res) => {
       records.push({
         kind: "chat",
         plan: requestInput.text?.format?.name === "rv_composition_plan",
+        instructions: requestInput.instructions,
+        requestedCount: requestInput.text?.format?.schema?.properties?.shots?.maxItems,
         at: Date.now(),
         visionDetails: Array.isArray(requestInput.input)
           ? requestInput.input.flatMap((m) =>
@@ -228,7 +230,7 @@ const provider = createServer(async (req, res) => {
       const plan = input.text?.format?.name === "rv_composition_plan";
       if (plan && controls.incompletePlan) { controls.incompletePlan--; return json({status:'incomplete',output:[]}); }
       if (plan && controls.failPlan) return json({error:"Planning unavailable"},503);
-      const text = plan ? JSON.stringify({shots: ["Wide left", "Balanced right", "Closer foreground", "Distant clearing"].map((label,i)=>({label,direction: `Shot ${i+1}: ${label}. Place the entire RV at horizontal center ${[25,70,45,55][i]} percent, width ${[20,32,48,13][i]} percent, on the visible level gravel clearing. Keep its visible side, backdrop camera and horizon, vegetation and source texture unchanged; match wheel contact and daylight shadows.`}))}) : input.text?.format
+      const text = plan ? JSON.stringify({feasible:!controls.noGround,reason:controls.noGround?"Choose a landscape with visible level ground.":"",shots: (controls.noGround?[]:["Natural ground fit", "Alternate position", "Nearer contact", "Deeper contact"].slice(0,input.text.format.schema.properties.shots.maxItems)).map((label,i)=>({label,direction: `Shot ${i+1}: ${label}. Place the entire RV at horizontal center ${[25,70,45,55][i]} percent, width ${[20,32,48,13][i]} percent, on the visible level gravel clearing. Keep its visible side, backdrop camera and horizon, vegetation and source texture unchanged; match wheel contact and daylight shadows.`}))}) : input.text?.format
         ? JSON.stringify({
             reply:
               "Keep the RV and framing, and soften the afternoon light. The prompt below is ready to refine before generating.",

@@ -90,7 +90,9 @@ test("Request validation blocks unsupported routing and invalid request identifi
     stage: "compose",
     prompt: "A photographic RV composition",
   };
-  assert.ok(requestSchema.safeParse(valid).success);
+  assert.equal(requestSchema.parse(valid).count,2);
+  for (const count of [1,2,3,4]) assert.equal(requestSchema.parse({...valid,count}).count,count);
+  for (const count of [0,5,1.5,"2",null]) assert.ok(!requestSchema.safeParse({...valid,count}).success);
   assert.ok(
     !requestSchema.safeParse({ ...valid, stage: "arbitrary-model" }).success,
   );
@@ -166,10 +168,8 @@ test("Native high-resolution outputs preserve aspect and satisfy fal pixel const
   assert.ok(p.includes("No people or added props"));
   assert.ok(p.includes("explicit user constraints"));
   const defaults = [0,1,2,3].map(i=>buildPrompt("compose", "Place the RV", i));
-  assert.ok(defaults[0].includes("18–24%"));
-  assert.ok(defaults[1].includes("right third"));
-  assert.ok(defaults[2].includes("42–50%"));
-  assert.ok(defaults[3].includes("12–17%"));
+  assert.ok(defaults.every(p=>p.includes("Use uniform scaling") && p.includes("tire contact line")));
+  assert.ok(defaults.every(p=>!p.includes("42–50%")));
   assert.ok(!buildPrompt("people", "Add two adults", 1, direction).includes(direction));
  });
 
@@ -183,3 +183,8 @@ test("Native high-resolution outputs preserve aspect and satisfy fal pixel const
    assert.throws(()=>parseCompositionShots({shots:[plan.shots[0],plan.shots[0],plan.shots[0],plan.shots[0]]}));
    assert.ok(placementPresets.every(s=>s.direction.includes('reference') || s.direction.includes('image 1')));
  });
+
+test('Placement plans enforce the requested count',()=>{
+  for(const n of [1,2,3,4]) assert.equal(parseCompositionShots({shots:placementPresets.slice(0,n)},n).length,n);
+  assert.throws(()=>parseCompositionShots({shots:placementPresets},2));
+});

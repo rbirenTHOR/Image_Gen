@@ -6,6 +6,7 @@ import { startBatch, batchView } from "./jobs";
 import { providerFetch } from "./provider-fetch";
 import {
   photographicBrief,
+  generationCountSchema,
   promptEnhancementGuide,
   type CampaignTurn,
   type Project,
@@ -27,6 +28,7 @@ const chatSchema = z
   .strict();
 const generationSchema = z
   .object({
+    count: generationCountSchema,
     prompt: z.string().trim().min(10).max(12000),
     aspect: z
       .enum(["landscape_4_3", "landscape_16_9", "square_hd", "portrait_4_3"])
@@ -314,11 +316,13 @@ export async function generateTurn(
         stage: refs.length ? "variation" : "campaign",
         prompt: t.prompt,
         aspect: t.aspect,
+        count: data.count,
         reference_ids: refs,
       },
       owner,
     );
   } catch (e) {
+    if (e instanceof ApiError && e.status === 409) throw e;
     const b = await one(
       "SELECT id FROM batches WHERE id=? AND owner_id=?",
       t.id,

@@ -130,6 +130,7 @@ export async function startBatch(raw: unknown, owner: string) {
       exists.stage !== data.stage ||
       exists.prompt !== data.prompt ||
       exists.aspect !== data.aspect ||
+      (await batchView(data.id, owner)).jobs.length !== data.count ||
       (data.stage === "variation" &&
         exists.inputs_json !==
           JSON.stringify([...new Set(data.reference_ids ?? [])]))
@@ -171,19 +172,19 @@ export async function startBatch(raw: unknown, owner: string) {
     "SELECT COUNT(*) n FROM jobs j JOIN batches b ON b.id=j.batch_id WHERE b.owner_id=? AND j.status IN ('submitting','queued','generating','saving')",
     owner,
   );
-  if ((count?.n ?? 0) >= 8)
+  if ((count?.n ?? 0) + data.count > 8)
     throw new ApiError(
       429,
-      "Two batches are already working. Let one finish before starting another.",
+      "The studio supports eight images at a time. Choose fewer images or let the current images finish.",
     );
   const images = await modelImages(inputs, owner);
-  const shots = data.stage === "compose" ? await planComposition(images, data.prompt) : null;
+  const shots = data.stage === "compose" ? await planComposition(images, data.prompt, data.count) : null;
   const endpoint = modelFor(data.stage),
     now = Date.now();
   const statements = [
     runtime()
       .DB.prepare(
-        "INSERT INTO batches(id,owner_id,project_id,stage,prompt,endpoint,quality,aspect,inputs_json,created_at) SELECT ?,?,?,?,?,?,?,?,?,? WHERE (SELECT COUNT(*) FROM jobs j JOIN batches b ON b.id=j.batch_id WHERE b.owner_id=? AND j.status IN ('submitting','queued','generating','saving')) < 8",
+        "INSERT INTO batches(id,owner_id,project_id,stage,prompt,endpoint,quality,aspect,inputs_json,created_at) SELECT ?,?,?,?,?,?,?,?,?,? WHERE (SELECT COUNT(*) FROM jobs j JOIN batches b ON b.id=j.batch_id WHERE b.owner_id=? AND j.status IN ('submitting','queued','generating','saving')) <= ?",
       )
       .bind(
         data.id,
@@ -197,10 +198,11 @@ export async function startBatch(raw: unknown, owner: string) {
         JSON.stringify(inputs),
         now,
         owner,
+        8 - data.count,
       ),
   ];
-  const ids = [0, 1, 2, 3].map(() => crypto.randomUUID());
-  for (let slot = 0; slot < 4; slot++)
+  const ids = Array.from({length:data.count}, () => crypto.randomUUID());
+  for (let slot = 0; slot < data.count; slot++)
     statements.push(
       runtime()
         .DB.prepare(
@@ -218,15 +220,15 @@ export async function startBatch(raw: unknown, owner: string) {
         owner,
       )
     )
-      return batchView(data.id, owner);
+      return startBatch(data, owner);
     const running = await one<{ n: number }>(
       "SELECT COUNT(*) n FROM jobs j JOIN batches b ON b.id=j.batch_id WHERE b.owner_id=? AND j.status IN ('submitting','queued','generating','saving')",
       owner,
     );
-    if ((running?.n ?? 0) >= 8)
+    if ((running?.n ?? 0) + data.count > 8)
       throw new ApiError(
         429,
-        "Two batches are already working. Let one finish before starting another.",
+        "The studio supports eight images at a time. Choose fewer images or let the current images finish.",
       );
     throw error;
   }

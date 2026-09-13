@@ -299,6 +299,7 @@ export default function CampaignWorkspace({
     [generating, setGenerating] = useState<string | null>(null),
     [promptEdits, setPromptEdits] = useState<Record<string, string>>({}),
     [aspects, setAspects] = useState<Record<string, string>>({}),
+    [counts, setCounts] = useState<Record<string, number>>({}),
     [picker, setPicker] = useState<"save" | "refs" | null>(null),
     [picked, setPicked] = useState<string[]>([]),
     [pickerQuery, setPickerQuery] = useState(""),
@@ -336,6 +337,7 @@ export default function CampaignWorkspace({
       setRefs(draft.refs);
       setPromptEdits(draft.promptEdits);
       setAspects(draft.aspects);
+      setCounts(draft.counts);
     }
     reload()
       .then((next) => {
@@ -365,11 +367,12 @@ export default function CampaignWorkspace({
       promptEdits: Object.fromEntries(
         Object.entries(promptEdits).filter(([id]) => pending.has(id)),
       ),
+      counts: Object.fromEntries(Object.entries(counts).filter(([id]) => pending.has(id))),
       aspects: Object.fromEntries(
         Object.entries(aspects).filter(([id]) => pending.has(id)),
       ),
     });
-  }, [project.id, draftReady, text, refs, promptEdits, aspects, data.turns]);
+  }, [project.id, draftReady, text, refs, promptEdits, aspects, counts, data.turns]);
   useEffect(() => {
     if (!data.turns.some((t) => t.status === "planning")) return;
     const timer = setInterval(() => reload().catch(() => {}), 4000);
@@ -462,12 +465,13 @@ export default function CampaignWorkspace({
         {
           prompt: promptEdits[t.id] ?? t.prompt,
           aspect: aspects[t.id] ?? t.aspect,
+          count: counts[t.id] ?? 2,
         },
       );
       onBatch(b);
       await reload();
       setTab("all");
-      toast.success("Four Max image requests started");
+      toast.success(`${b.jobs.length} Max image request${b.jobs.length === 1 ? "" : "s"} started`);
     } catch (e) {
       try {
         const b = await api<Batch>("batches/" + t.id);
@@ -566,7 +570,7 @@ export default function CampaignWorkspace({
         {(
           b?.jobs ??
           (generating === t.id
-            ? [0, 1, 2, 3].map((slot) => ({
+            ? Array.from({length:counts[t.id] ?? 2}, (_,slot) => ({
                 id: "pending" + slot,
                 status: "submitting",
                 result_asset_id: null,
@@ -660,7 +664,7 @@ export default function CampaignWorkspace({
           <details className="chat-job-details">
             <summary>Generation status & details</summary>
             <p>
-              {b.jobs.filter((j) => j.status === "ready").length} of 4 ready ·
+              {b.jobs.filter((j) => j.status === "ready").length} of {b.jobs.length} ready ·
               Sunburst Max
             </p>
             {b.jobs.map((j) => (
@@ -1155,12 +1159,16 @@ export default function CampaignWorkspace({
                                   setAspects((s) => ({ ...s, [t.id]: v }))
                                 }
                               />
+                              <label className="field-label" htmlFor={"image-count-"+t.id}>Number of images</label>
+                              <select id={"image-count-"+t.id} className="image-count-select" value={counts[t.id] ?? 2} disabled={!!generating} onChange={e=>setCounts(s=>({...s,[t.id]:Number(e.target.value)}))}>
+                                {[1,2,3,4].map(n=><option key={n} value={n}>{n} image{n===1?"":"s"}</option>)}
+                              </select>
                               <Button
                                 className="generate-direction"
                                 onClick={() => generate(t)}
                                 disabled={
                                   !!generating ||
-                                  busyJobs.length >= 8 ||
+                                  busyJobs.length + (counts[t.id] ?? 2) > 8 ||
                                   (promptEdits[t.id] ?? t.prompt).trim()
                                     .length < 10
                                 }
@@ -1170,12 +1178,12 @@ export default function CampaignWorkspace({
                                 ) : (
                                   <Sparkles />
                                 )}
-                                Generate 4 images
+                                Generate {counts[t.id] ?? 2} image{(counts[t.id] ?? 2) === 1 ? "" : "s"}
                                 <ArrowUp />
                               </Button>
                               <small>
                                 {generationSizeLabel(aspects[t.id] ?? t.aspect)}
-                                . Four Max images via fal. Higher resolution
+                                . {counts[t.id] ?? 2} Max images via fal. Higher resolution
                                 takes longer and may cost more.
                               </small>
                             </>

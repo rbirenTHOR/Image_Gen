@@ -109,7 +109,7 @@ test("Edited generation direction and format survive reload before spending on i
   ).toBe(before.filter((r: any) => r.kind === "image").length);
 });
 
-test("A lost generation response recovers the existing four requests without duplicates", async ({
+test("A lost generation response recovers the existing two requests without duplicates", async ({
   page,
 }) => {
   await chat(page);
@@ -130,20 +130,20 @@ test("A lost generation response recovers the existing four requests without dup
     await route.abort("failed");
   });
   await page
-    .getByRole("button", { name: "Generate 4 images", exact: true })
+    .getByRole("button", { name: "Generate 2 images", exact: true })
     .click();
   await expect.poll(() => interrupted).toBe(true);
   await expect(
-    page.getByRole("button", { name: "Generate 4 images", exact: true }),
+    page.getByRole("button", { name: "Generate 2 images", exact: true }),
   ).toHaveCount(0);
-  await expect(page.locator(".chat-result img")).toHaveCount(4, {
+  await expect(page.locator(".chat-result img")).toHaveCount(2, {
     timeout: 30000,
   });
   await page.reload();
   await chat(page);
-  await expect(page.locator(".chat-result img")).toHaveCount(4);
+  await expect(page.locator(".chat-result img")).toHaveCount(2);
   expect(
     (await records(page)).filter((r: any) => r.kind === "image").length -
       before,
-  ).toBe(4);
+  ).toBe(2);
 });

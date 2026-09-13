@@ -95,10 +95,10 @@ test('Add and use a reviewed backdrop in composition; reject changed rights and 
   await expect(page.getByRole('dialog').getByRole('alert')).toContainText('no longer meets');
   await page.request.post('http://127.0.0.1:6199/__control',{data:{changedLicense:false}});
   await page.getByRole('button',{name:'Add & use backdrop',exact:true}).click();
-  await expect(page.getByRole('button',{name:'Generate 4 takes',exact:true})).toBeVisible();
+  await expect(page.getByRole('button',{name:'Generate 2 takes',exact:true})).toBeVisible();
   await expect(page.getByText('Real-photo backdrop',{exact:true})).toBeVisible();
-  await page.getByRole('button',{name:'Generate 4 takes',exact:true}).click();
-  await expect(page.getByText('4 of 4 ready',{exact:true})).toBeVisible({timeout:30000});
+  await page.getByRole('button',{name:'Generate 2 takes',exact:true}).click();
+  await expect(page.getByText('2 of 2 ready',{exact:true})).toBeVisible({timeout:30000});
   const bad=await page.request.post('/api/studio/landscape-import',{data:{pageId:12,name:'bad',environment:'meadow',suitability:'placement',originalUrl:'http://127.0.0.1/private'}});
   expect(bad.status()).toBe(400);
   expect((await page.request.get('/api/studio/landscape-search?query=x&offset=-1')).status()).toBe(400);

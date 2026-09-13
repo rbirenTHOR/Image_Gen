@@ -106,7 +106,9 @@ export interface Batch {
 }
 export const activeStatus = (s: string) =>
   ["submitting", "queued", "generating", "saving"].includes(s);
+export const generationCountSchema = z.number().int().min(1).max(4).default(2);
 export const requestSchema = z.object({
+  count: generationCountSchema,
   id: z.string().uuid(),
   project_id: z.string().min(1).max(100),
   stage: z.enum([
@@ -125,6 +127,7 @@ export const requestSchema = z.object({
   reference_id: z.string().max(100).optional(),
   reference_ids: z.array(z.string().min(1).max(100)).max(4).optional(),
 });
+export const placementGeometryBrief = `Treat the RV as one rigid object: preserve its observed body length-to-height ratio, wheel diameter, axle spacing, roofline and visible side. Use uniform scaling, never stretch, squash, bend or widen the body to fit a space. First identify the backdrop camera height, horizon or vanishing direction, ground slope and a continuous load-bearing contact area. Match the source RV camera elevation and visible roof/side perspective to the destination; do not paste an elevated dealer photograph into an eye-level scene unchanged. Preserve the supported view without inventing an unseen side. Establish the tire contact line on a named visible patch of ground, then derive vehicle scale from that depth and local reference objects. At greater distance the full vehicle shrinks consistently and the contact line approaches the ground-plane horizon; do not choose screen position and width independently. Use visible road width, nearby vehicles or other reliable scale cues when available, but do not invent dimensions or assume every tree is the same size. Anchor every visible tire and support to the same ground plane with compact contact shadows and a consistent cast shadow; allow foreground terrain to occlude the lowest edges where appropriate. Keep wheels round in their projected plane, the chassis level with the local ground, and no floating, buried tires or giant/toy proportions. Match local contrast, grain, atmospheric depth and reflections. Physical fit takes priority over composition variety. If output aspect differs, crop the plate conservatively without stretching either reference.`;
 export const photographicBrief = `Render a believable camera photograph with natural color and ordinary real-world detail. Use one coherent light source, physically consistent shadows, gentle highlight rolloff and believable material reflections. Texture should follow the object and its distance from the camera, rather than look uniformly sharp. Keep subtle irregularities and natural tonal variation. Avoid painterly blending, airbrushed surfaces, CGI gloss, HDR halos and oversharpening. For edits, retain the source camera, exposure and color balance unless the requested change requires otherwise.`;
 export const environmentBrief = `Build a geographically coherent place. Nearby gravel has irregular stone sizes, embedded edges and small contact shadows; soil, grass and rock remain distinct materials. Trees have asymmetric branches and varied spacing, with foliage resolving into plausible clusters rather than repeating stamps or smeared green masses. Rock formations have consistent strata and erosion. Water reflects the actual sky and surroundings with modest surface variation. Foreground detail is more legible than distant detail; distant terrain loses contrast and fine texture gradually through real atmospheric perspective. Keep the horizon, cloud scale and vegetation plausible. Do not add water, trees or mountains when they are absent from the requested setting.`;
 export const promptEnhancementGuide = `Translate the user's intent into concrete photographic instructions, not a list of quality adjectives. Specify the requested place, realistic materials, a coherent light direction and believable spatial relationships. Avoid adding dramatic skies, orange-and-teal grading, excessive golden glow, artificial mist, perfect symmetry or an idealized postcard composition. Preserve explicitly requested weather, time of day and artistic intent. Prefer positive descriptions of the desired result to long negative lists. For existing photos, describe only the requested change and identify what must remain unchanged; do not prescribe a new lens, viewpoint or global lighting by default.`;
@@ -159,10 +162,10 @@ export function buildPrompt(
   };
   const isEdit = ["compose", "people", "objects", "variation"].includes(stage);
   const compositionVariations = [
-    "Wide establishing shot: place the RV in the far midground on usable ground, roughly 18–24% of image width, toward the left third if terrain allows. Give the landscape most of the frame.",
-    "Opposite-side composition: place the RV toward the right third on a different usable patch of ground, roughly 28–34% of image width. Leave open scenery to its left.",
-    "Closer product composition: move the RV into a feasible nearer ground plane, roughly 42–50% of image width. Keep the entire unit visible with breathing room around it.",
-    "Depth-led composition: place the RV farther along a visible ground corridor or clearing, roughly 12–17% of image width. Use a modest diagonal alignment only if supported by the source RV view.",
+    "Use the most physically plausible usable ground patch and scale for this RV and source camera. Respect the requested distance; anchor wheels to a visible landmark before deriving scale.",
+    "Offer another feasible placement on the same ground plane. Move laterally only where the terrain and source viewing angle support it; maintain the physical vehicle size at the same depth.",
+    "If the terrain allows, use a modestly nearer contact point and derive the corresponding scale from the same camera geometry. Otherwise use a restrained alternative on the usable patch.",
+    "If the terrain allows, use a modestly deeper contact point, reducing vehicle size consistently with perspective. Do not force a new orientation or unsupported position for variety.",
   ];
   const variations = stage === "compose" ? compositionVariations : isEdit
     ? [
@@ -181,7 +184,7 @@ export function buildPrompt(
     stage === "landscape" || stage === "campaign"
       ? `\n\nENVIRONMENT\n${environmentBrief}`
       : "";
-  return `${instructions[stage]}\n\nCREATIVE DIRECTION\n${brief}\n\nPHOTOGRAPHIC STANDARD\n${photographicBrief}${environment}\n\nVARIATION ${slot + 1}\n${stage === "compose" && placement ? placement : variations[slot]}${stage === "compose" ? "\nPlacement must obey explicit user constraints and visible terrain. Do not force a vehicle onto water, steep slopes or vegetation. Keep the backdrop camera and horizon fixed; create variation through vehicle position, distance and modest supported orientation. Do not mirror lettering or invent unseen vehicle details. Produce one photograph, never a collage." : ""}`;
+  return `${instructions[stage]}${stage === "compose" ? "\n\nPLACEMENT GEOMETRY\n" + placementGeometryBrief : ""}\n\nCREATIVE DIRECTION\n${brief}\n\nPHOTOGRAPHIC STANDARD\n${photographicBrief}${environment}\n\nVARIATION ${slot + 1}\n${stage === "compose" && placement ? placement : variations[slot]}${stage === "compose" ? "\nPlacement must obey explicit user constraints and visible terrain. Do not force a vehicle onto water, steep slopes or vegetation. Keep the backdrop camera and horizon fixed; create variation through vehicle position, distance and modest supported orientation. Do not mirror lettering or invent unseen vehicle details. Produce one photograph, never a collage." : ""}`;
 }
 export function providerInput(
   stage: GenerationStage,

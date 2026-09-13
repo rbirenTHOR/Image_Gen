@@ -198,6 +198,6 @@ test("Make more lifelike prepares a focused chat edit without paying for images"
     after.records.filter((r: any) => r.kind === "chat").at(-1).visionDetails,
   ).toEqual(["high"]);
   await expect(
-    page.getByRole("button", { name: "Generate 4 images", exact: true }),
+    page.getByRole("button", { name: "Generate 2 images", exact: true }),
   ).toBeVisible();
 });
