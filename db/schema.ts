@@ -13,6 +13,7 @@ export const assets = sqliteTable(
     environment: text("environment").notNull().default(""),
     lighting: text("lighting").notNull().default(""),
     source: text("source").notNull(),
+    photoSourceJson: text("photo_source_json").notNull().default(""),
     r2Key: text("r2_key").notNull(),
     mime: text("mime").notNull(),
     width: integer("width").notNull().default(0),

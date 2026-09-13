@@ -2,7 +2,8 @@ import {runtime,one,run,ApiError} from './runtime';
 import {naturePhotoById} from '@/lib/nature-catalog';
 import {imageObject} from './nature-library';
 import type {Asset,Project} from '@/lib/domain';
-export function publicAsset(a:Asset){const photo=naturePhotoById.get(a.id);return {...a,url:'/api/studio/media/'+a.id,...(photo?{thumbnail_url:'/backdrops/'+a.id+'.jpg',photo_source:photo}:{})}}
+import {storedPhoto} from '@/lib/landscape-discovery';
+export function publicAsset(a:Asset){const photo=naturePhotoById.get(a.id)??storedPhoto(a.photo_source_json);const {photo_source_json,...rest}=a;return {...rest,url:'/api/studio/media/'+a.id,...(photo?{thumbnail_url:photo.previewUrl??'/backdrops/'+a.id+'.jpg',photo_source:photo}:{})}}
 export async function getAsset(id:string,owner:string){const a=await one<Asset>('SELECT * FROM assets WHERE id=? AND (owner_id=? OR owner_id=?)',id,owner,'shared');if(!a)throw new ApiError(404,'That image is no longer available.');return a}
 export async function getProject(id:string,owner:string){const p=await one<Project>('SELECT * FROM projects WHERE id=? AND owner_id=?',id,owner);if(!p)throw new ApiError(404,'Campaign not found.');return p}
 export async function ensureSeeds(){const exists=await one<{id:string}>('SELECT id FROM assets WHERE id=?','mountain-stillness');if(exists)return;const {seedData}=await import('./seed-data');const {BUCKET}=runtime();for(const seed of seedData){if(await one('SELECT id FROM assets WHERE id=?',seed.id))continue;const key='seed/'+seed.file;await BUCKET.put(key,Uint8Array.from(atob(seed.base64),c=>c.charCodeAt(0)),{httpMetadata:{contentType:'image/jpeg'}});await run('INSERT OR IGNORE INTO assets (id,owner_id,kind,name,environment,lighting,source,r2_key,mime,width,height,in_library,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)',seed.id,'shared',seed.kind,seed.name,seed.environment,seed.lighting,seed.source,key,'image/jpeg',seed.width,seed.height,1,Date.now());}}

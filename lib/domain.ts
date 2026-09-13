@@ -36,6 +36,7 @@ export type GenerationStage =
   | "campaign"
   | "variation";
 export interface Asset {
+  photo_source_json?: string;
   thumbnail_url?: string;
   photo_source?: import("./nature-catalog").NaturePhoto;
   campaign_ids?: string[];

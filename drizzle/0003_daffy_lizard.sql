@@ -1,0 +1,1 @@
+ALTER TABLE `assets` ADD `photo_source_json` text DEFAULT '' NOT NULL;

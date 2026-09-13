@@ -1,4 +1,5 @@
 import { ensureNatureLibrary, imageObject } from "@/lib/server/nature-library";
+import { searchLandscapes, importLandscape } from '@/lib/server/landscape-discovery';
 import {
   campaignData,
   saveCampaignImages,
@@ -94,6 +95,10 @@ async function handle(
     const { path } = await context.params;
     const [resource, id, action] = path;
     const method = request.method;
+    if (resource === 'landscape-search' && method === 'GET')
+      return json(await searchLandscapes(Object.fromEntries(new URL(request.url).searchParams), owner));
+    if (resource === 'landscape-import' && method === 'POST')
+      return json(await importLandscape(await request.json(), owner), 201);
     if (resource === "bootstrap" && method === "POST") {
       await ensureSeeds();
       await ensureNatureLibrary();

@@ -1,6 +1,7 @@
 "use client";
 import { OriginalPhoto } from "@/components/original-photo";
 import { PhotoSource } from "@/components/photo-source";
+import LandscapeDiscovery from '@/components/landscape-discovery';
 import CampaignWorkspace, {
   CampaignHome,
 } from "@/components/campaign-workspace";
@@ -859,7 +860,7 @@ export default function Studio() {
           )}
           <span>
             {a.source === "sourced-photo"
-              ? "Real photo · 8K+"
+              ? (a.width >= 7680 ? "Real photo · 8K+" : "Real photo · 4K+")
               : a.source === "ai-sample"
               ? "AI sample"
               : a.approved
@@ -1239,6 +1240,7 @@ export default function Studio() {
           <div><p>{landscapeSource === "photos" ? "Original nature photography, ready to use. Choose a setting with room for your RV." : "Reuse your uploaded and generated landscapes."}</p></div>
           <Choice value={landscapeSource} onChange={(v) => { setLandscapeSource(v); setFilter("all"); setGroundFilter("all"); setQuery(""); }} label="Backdrop collection" options={[["photos", "Real photographs"], ["mine", "Saved & generated"], ["all", "All backdrops"]]} />
         </div>}
+        {libKind === 'landscape' && <div className="discover-library-action"><Button variant="outline" onClick={()=>setTab('discover')}><Search/>Find real photos</Button><span>Search beyond your library and review new locations.</span></div>}
         <div className="library-toolbar">
           <div className="search-field">
             <Search size={18} />
@@ -1285,7 +1287,7 @@ export default function Studio() {
             </Button>
           </div>
         )}
-        {libKind === "landscape" && <p className="backdrop-count" role="status">{libraryAssets.length} backdrops{landscapeSource === "photos" ? " · Native 8K+ originals · No generation needed" : ""}</p>}
+        {libKind === "landscape" && <p className="backdrop-count" role="status">{libraryAssets.length} backdrops{landscapeSource === "photos" ? (libraryAssets.every(a=>a.width>=7680)?" · Native 8K+ originals · No generation needed":" · Full-resolution originals · No generation needed") : ""}</p>}
         <div
           className={
             "library-grid " +
@@ -1323,6 +1325,16 @@ export default function Studio() {
         )}
       </>
     );
+  }
+  function discovery() {
+    return <LandscapeDiscovery canUse={!!project?.rv_id} onBack={()=>{setTab('library');setQuery('');setFilter('all');setGroundFilter('all');setLandscapeSource('photos');}} onImported={async (asset,use)=>{
+      setAssets(old=>[asset,...old.filter(a=>a.id!==asset.id)]);
+      if(use&&project){
+        const p=await api<Project>('projects/'+project.id+'/select',{stage:'landscape',asset_id:asset.id});
+        replaceProject(p);setCandidate(asset.id);setTab('library');setView('create');
+        toast.success('Backdrop added and selected');
+      }
+    }}/>;
   }
   if (signIn)
     return (
@@ -1713,7 +1725,7 @@ export default function Studio() {
                 role="tabpanel"
                 aria-labelledby={"library-tab-" + libraryKind}
               >
-                {tab === "generate" ? generator() : library()}
+                {tab === "generate" ? generator() : tab === 'discover' && libraryKind === 'landscape' ? discovery() : library()}
               </div>
             </Tabs>
           ) : stage === "rv" ? (
@@ -1738,18 +1750,20 @@ export default function Studio() {
             </>
           ) : stage === "landscape" ? (
             <>
-              <Tabs value={tab} onValueChange={setTab}>
+              <Tabs className="setting-tabs" value={tab} onValueChange={setTab}>
                 <TabsList variant="line">
                   <TabsTrigger value="library">Photo library</TabsTrigger>
+                  <TabsTrigger value="discover"><Search/>Find real photos</TabsTrigger>
                   <TabsTrigger value="generate">
                     <Sparkles />
                     Generate a setting
                   </TabsTrigger>
                 </TabsList>
                 <TabsContent value="library">{library()}</TabsContent>
+                <TabsContent value="discover">{discovery()}</TabsContent>
                 <TabsContent value="generate">{generator()}</TabsContent>
               </Tabs>
-              <div className="chips">
+              {tab !== 'discover' && <><div className="chips">
                 <span>
                   <Sun size={14} />
                   Natural light
@@ -1760,7 +1774,7 @@ export default function Studio() {
                 </span>
                 <span>Originals preserved</span>
               </div>
-              <footer className="workspace-footer">
+              <footer className="workspace-footer" data-inactive={!candidate || byId.get(candidate)?.kind !== 'landscape'}>
                 <div>
                   <small>Your selected setting</small>
                   <strong>
@@ -1781,7 +1795,7 @@ export default function Studio() {
                   Compose your photograph
                   <ArrowRight />
                 </Button>
-              </footer>
+              </footer></>}
             </>
           ) : stage === "compose" ? (
             <>

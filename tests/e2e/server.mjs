@@ -109,6 +109,31 @@ const provider = createServer(async (req, res) => {
     if (req.headers["x-bridge-token"] !== "e2e-transport")
       return json({ error: "Forbidden" }, 403);
     const u = new URL(req.headers["x-upstream-url"]);
+    if (u.hostname === 'commons.wikimedia.org' && u.pathname === '/w/api.php') {
+      records.push({kind:'discovery',query:u.searchParams.get('gsrsearch'),pageids:u.searchParams.get('pageids')});
+      if(controls.failDiscovery>0){controls.failDiscovery--;return json({error:'temporary outage'},503);}
+      const item=(id,extra={})=>({pageid:id,title:'File:Alaska open meadow '+id+'.jpg',index:id,imageinfo:[{
+        url:'https://upload.wikimedia.org/wikipedia/commons/a/a1/Discovery_'+id+'.jpg',
+        thumburl:'https://thumb.wikimedia.org/wikipedia/commons/thumb/a/a1/Discovery_'+id+'.jpg/1280px-Discovery_'+id+'.jpg',
+        width:8200,height:5500,size:jpeg.length,mime:'image/jpeg',
+        extmetadata:{Artist:{value:'<a href="https://example.com">Test photographer</a>'},LicenseShortName:{value:'CC0'},ImageDescription:{value:'Alaska meadow with open ground and distant mountains.'},Categories:{value:'Nature photographs'}},...extra}]});
+      const requested=Number(u.searchParams.get('pageids'));
+      if(requested){
+        const p=item(requested);
+        if(controls.changedLicense)p.imageinfo[0].extmetadata.LicenseShortName.value='CC BY-SA 4.0';
+        return json({query:{pages:[p]}});
+      }
+      const q=u.searchParams.get('gsrsearch')??'';
+      if(q.includes('nomatchingbackdrop'))return json({query:{pages:[]}});
+      const base=Number((q.match(/case(\d+)/)||[])[1]??1)*100;
+      const offset=Number(u.searchParams.get('gsroffset')||0);
+      const good=item(900000+base+offset);
+      const badLicense=item(900001+base+offset);badLicense.imageinfo[0].extmetadata.LicenseShortName.value='CC BY-SA 4.0';
+      const badAI=item(900002+base+offset);badAI.imageinfo[0].extmetadata.Categories.value='AI-generated images';
+      const badURL=item(900003+base+offset,{url:'http://127.0.0.1/private.jpg'});
+      const low=item(900004+base+offset,{width:4000,height:2600});
+      return json({query:{pages:[good,badLicense,badAI,badURL,low]},...(offset?{}:{continue:{gsroffset:40}})});
+    }
     if (u.hostname === "upload.wikimedia.org") {
       records.push({kind: "nature-original", url: u.toString()});
       if (controls.failNature > 0) { controls.failNature--; return json({error:"Fixture source unavailable"},503); }

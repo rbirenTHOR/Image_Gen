@@ -1,6 +1,17 @@
 import { parseCompositionShots, placementPresets } from '../lib/composition-plan.ts';
+import {parseLandscape, commonsImageUrl, sourceText} from '../lib/landscape-discovery.ts';
 import test from "node:test";
 import assert from "node:assert/strict";
+test('Photo discovery validates source hosts, rights, dimensions and artwork metadata',()=>{
+  const photo={pageid:123,title:'File:Meadow.jpg',imageinfo:[{url:'https://upload.wikimedia.org/wikipedia/commons/a/a1/Meadow.jpg',thumburl:'https://thumb.wikimedia.org/wikipedia/commons/thumb/a/a1/Meadow.jpg/1280px-Meadow.jpg',width:8000,height:5000,size:12_000_000,mime:'image/jpeg',extmetadata:{LicenseShortName:{value:'CC0'},Artist:{value:'<b>Photographer</b>'},Categories:{value:'Nature photographs'}}}]};
+  assert.equal(parseLandscape(photo,7680)?.photographer,'Photographer');
+  assert.equal(parseLandscape({...photo,imageinfo:[{...photo.imageinfo[0],width:5000}]},7680),null);
+  assert.equal(parseLandscape({...photo,imageinfo:[{...photo.imageinfo[0],size:70_000_000}]}),null);
+  for(const license of ['CC BY 4.0','CC BY-SA 4.0','Unknown','CC0 and restrictions'])assert.equal(parseLandscape({...photo,imageinfo:[{...photo.imageinfo[0],extmetadata:{LicenseShortName:{value:license}}}]}),null);
+  for(const category of ['AI-generated photographs','Oil paintings','Maps of Alaska','Satellite images'])assert.equal(parseLandscape({...photo,imageinfo:[{...photo.imageinfo[0],extmetadata:{...photo.imageinfo[0].extmetadata,Categories:{value:category}}}]}),null);
+  for(const url of ['http://upload.wikimedia.org/wikipedia/commons/a.jpg','https://upload.wikimedia.org.evil.test/wikipedia/commons/a.jpg','https://user@upload.wikimedia.org/wikipedia/commons/a.jpg','https://127.0.0.1/wikipedia/commons/a.jpg','https://upload.wikimedia.org/private/a.jpg'])assert.equal(commonsImageUrl(url),null);
+  assert.equal(sourceText('<script>alert(1)</script><p>Meadow &amp; lake</p>'),'alert(1) Meadow & lake');
+});
 import {
   buildPrompt,
   modelFor,

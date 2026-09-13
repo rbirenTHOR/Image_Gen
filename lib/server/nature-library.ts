@@ -2,6 +2,7 @@ import { providerFetch } from "./provider-fetch";
 import { naturePhotos, naturePhotoById } from '@/lib/nature-catalog';
 import { runtime, all, ApiError } from './runtime';
 import type { Asset } from '@/lib/domain';
+import { storedPhoto } from '@/lib/landscape-discovery';
 
 export async function ensureNatureLibrary() {
   if (!naturePhotos.length) return;
@@ -17,13 +18,12 @@ export async function ensureNatureLibrary() {
     'sourced-photo', 'nature-originals/' + p.id, p.mime, p.width, p.height, 1, Date.now() - i)));
 }
 
-/** Public-domain/CC0 originals are imported once, on use, then served from R2.
- * Only fixed catalog URLs can reach the network; browser input never supplies a URL. */
+/** Only fixed catalog URLs or server-validated Commons metadata reach the network. */
 export async function imageObject(asset: Asset) {
   const bucket = runtime().BUCKET;
   const stored = await bucket.get(asset.r2_key);
   if (stored) return stored;
-  const photo = naturePhotoById.get(asset.id);
+  const photo = naturePhotoById.get(asset.id) ?? storedPhoto(asset.photo_source_json);
   if (asset.source !== 'sourced-photo' || !photo) return null;
   try {
     const response = await providerFetch(photo.originalUrl, {

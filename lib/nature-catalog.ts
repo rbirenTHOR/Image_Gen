@@ -1,4 +1,7 @@
 export interface NaturePhoto {
+  previewUrl?: string;
+  pageId?: number;
+  importedAt?: number;
   id: string;
   name: string;
   location: string;

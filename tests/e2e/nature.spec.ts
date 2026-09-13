@@ -8,12 +8,15 @@ test.beforeEach(async ({context, page}) => {
 
 test('Real-photo catalog filters, provenance, and recoverable original loading', async ({page}, info) => {
   await page.goto('/?view=library&kind=landscape');
-  await expect(page.getByText('30 backdrops · Native 8K+ originals · No generation needed')).toBeVisible();
-  await expect(page.locator('.photo-card-detail')).toHaveCount(30);
+  await expect(page.locator('.photo-card-detail').first()).toBeVisible();
+  const state = await (await page.request.get('/api/studio/state')).json();
+  const catalog = state.assets.filter((a:any)=>a.kind==='landscape'&&a.source==='sourced-photo'&&a.in_library);
+  expect(catalog.length).toBeGreaterThanOrEqual(30);
+  await expect(page.locator('.photo-card-detail')).toHaveCount(catalog.length);
   await page.getByRole('button',{name:'Open ground',exact:true}).click();
-  await expect(page.locator('.photo-card-detail')).toHaveCount(25);
+  await expect(page.locator('.photo-card-detail')).toHaveCount(catalog.filter((a:any)=>a.photo_source.suitability==='placement').length);
   await page.getByRole('button',{name:'Scenic references',exact:true}).click();
-  await expect(page.locator('.photo-card-detail')).toHaveCount(5);
+  await expect(page.locator('.photo-card-detail')).toHaveCount(catalog.filter((a:any)=>a.photo_source.suitability==='scenery').length);
   await page.getByRole('button',{name:'All scenes',exact:true}).click();
   const index = ['desktop-light','mobile-light','desktop-dark'].indexOf(info.project.name);
   const photo = naturePhotos[10+index];
@@ -36,7 +39,7 @@ test('Real-photo catalog filters, provenance, and recoverable original loading',
   await page.getByRole('textbox',{name:'Search library'}).fill('no-such-place');
   await expect(page.getByText('No matching images')).toBeVisible();
   await page.getByRole('button',{name:'Clear search',exact:true}).click();
-  await expect(page.locator('.photo-card-detail')).toHaveCount(30);
+  await expect(page.locator('.photo-card-detail')).toHaveCount(catalog.length);
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+2)).toBe(true);
   await page.screenshot({path:info.outputPath('photo-library.png'),fullPage:false});
 });
