@@ -11,11 +11,17 @@ test('Scene assessment produces four persisted shot directions and retries the s
     expect((await page.request.post('/api/studio/projects/'+p.id+'/select',{data:{stage,asset_id}})).ok()).toBe(true);
   const request={id:crypto.randomUUID(),project_id:p.id,stage:'compose',prompt:'Keep the RV distant on visible level ground. Preserve the landscape.'};
   const baseline=await control({failPlan:1,failChat:0,failSubmit:0,failSave:0,delay:100});
-  const failed=await page.request.post('/api/studio/batches',{data:request});
-  expect(failed.status()).toBe(503);
-  expect((await failed.json()).error).toContain('No image generations');
-  expect((await control()).records.filter((r:any)=>r.kind==='image').length).toBe(baseline.records.filter((r:any)=>r.kind==='image').length);
-  const before=await control({failPlan:0,failSubmit:1});
+  const fallback=await page.request.post('/api/studio/batches',{data:request});
+  expect(fallback.ok()).toBe(true);
+  const fallbackBatch=await fallback.json();
+  expect(fallbackBatch.jobs.every((j:any)=>j.shot_label.startsWith('Preset ·'))).toBe(true);
+  expect(new Set(fallbackBatch.jobs.map((j:any)=>j.generation_prompt)).size).toBe(4);
+  expect((await control()).records.filter((r:any)=>r.kind==='image').length).toBe(baseline.records.filter((r:any)=>r.kind==='image').length+4);
+  await page.goto('/?project='+p.id);
+  await expect(page.getByText('Automatic scene assessment was unavailable.',{exact:false})).toBeVisible();
+  await expect(page.locator('.batch-section').first().getByText('4 of 4 ready',{exact:true})).toBeVisible({timeout:30000});
+  request.id=crypto.randomUUID();
+  const before=await control({failPlan:0,failSubmit:1,incompletePlan:1});
   const response=await page.request.post('/api/studio/batches',{data:request});
   expect(response.ok()).toBe(true);
   const b=await response.json();
@@ -27,7 +33,7 @@ test('Scene assessment produces four persisted shot directions and retries the s
   expect(images.map((r:any)=>r.input.prompt).sort()).toEqual(b.jobs.map((j:any)=>j.generation_prompt).sort());
   expect(images.every((r:any)=>r.input.quality==='max'&&r.input.num_images===1)).toBe(true);
   const plans=after.records.slice(before.records.length).filter((r:any)=>r.plan);
-  expect(plans).toHaveLength(1);
+  expect(plans).toHaveLength(2);
   expect(plans[0].visionDetails).toEqual(['high','high']);
   const failedJob=b.jobs.find((j:any)=>j.status==='failed');
   expect(failedJob).toBeTruthy();
@@ -38,10 +44,10 @@ test('Scene assessment produces four persisted shot directions and retries the s
   expect((await page.request.post('/api/studio/batches',{data:request})).ok()).toBe(true);
   expect((await control()).records.length).toBe(retry.records.length);
   await page.goto('/?project='+p.id);
-  await expect(page.getByText('4 of 4 ready',{exact:true})).toBeVisible({timeout:30000});
-  await expect(page.locator('.shot-label')).toHaveCount(4);
+  await expect(page.locator('.batch-section').first().getByText('4 of 4 ready',{exact:true})).toBeVisible({timeout:30000});
+  await expect(page.locator('.batch-section').first().locator('.shot-label')).toHaveCount(4);
   await page.reload();
-  await expect(page.locator('.shot-label')).toHaveCount(4);
+  await expect(page.locator('.batch-section').first().locator('.shot-label')).toHaveCount(4);
 });
 
 

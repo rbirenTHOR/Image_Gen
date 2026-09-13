@@ -1,0 +1,7 @@
+# Placement assessment recovery
+
+The reported production POST /api/studio/batches returned HTTP 503 at 2026-09-13 02:28:13 UTC after approximately 23 seconds (request ce274848c96d32047ad4d20839dabc99). Subsequent recovery reads returned 404 because the planner failed before batch/job insertion. Prior code discarded the provider and validation cause, so the precise cause of that historical response cannot be established from retained logs.
+
+Useful shot directions no longer fail because a display label is longer than 65 characters or repeats another label. Titles are normalized and trimmed for display. Four nonempty, distinct directions remain required. Incomplete or temporary provider responses receive one bounded retry with more output space. Timeouts, unavailable configuration, or exhausted attempts fall back to four explicitly labeled placement presets; image generation still receives both original references and the user brief. Refusals continue to stop the request. The UI clearly distinguishes presets from a completed scene assessment. Safe diagnostic logs retain error category, attempt and provider request ID without prompts, image URLs, response text or secrets.
+
+Validation covers long labels, duplicate directions, temporary provider failure with four preset submissions, incomplete-response recovery, exact retry prompts, idempotent requests, preserved labels after reload and unchanged high-resolution reference caching. Existing campaigns and saved images are not rewritten.

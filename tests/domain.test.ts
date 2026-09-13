@@ -1,3 +1,4 @@
+import { parseCompositionShots, placementPresets } from '../lib/composition-plan.ts';
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
@@ -151,4 +152,15 @@ test("Native high-resolution outputs preserve aspect and satisfy fal pixel const
   assert.ok(defaults[2].includes("42–50%"));
   assert.ok(defaults[3].includes("12–17%"));
   assert.ok(!buildPrompt("people", "Add two adults", 1, direction).includes(direction));
+ });
+
+ test("Useful placement directions survive long or repeated display labels", () => {
+   const plan={shots:placementPresets.map(s=>({...s,label:'A very detailed placement label '.repeat(5)}))};
+   const shots=parseCompositionShots(plan);
+   assert.equal(shots.length,4);
+   assert.ok(shots.every(s=>s.label.length===65));
+   assert.deepEqual(shots.map(s=>s.direction),placementPresets.map(s=>s.direction));
+   assert.throws(()=>parseCompositionShots({shots:plan.shots.slice(0,3)}));
+   assert.throws(()=>parseCompositionShots({shots:[plan.shots[0],plan.shots[0],plan.shots[0],plan.shots[0]]}));
+   assert.ok(placementPresets.every(s=>s.direction.includes('reference') || s.direction.includes('image 1')));
  });

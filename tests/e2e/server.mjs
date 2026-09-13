@@ -200,6 +200,7 @@ const provider = createServer(async (req, res) => {
       const prompt =
         "Preserve the exact RV, body graphics, geometry and camera position. Use soft afternoon sunlight with realistic shadows and naturally detailed grass and gravel. Keep the landscape recognizable and do not add subjects unless explicitly requested. Match scale, perspective and ground contact; avoid oversharpening and artificial colors.";
       const plan = input.text?.format?.name === "rv_composition_plan";
+      if (plan && controls.incompletePlan) { controls.incompletePlan--; return json({status:'incomplete',output:[]}); }
       if (plan && controls.failPlan) return json({error:"Planning unavailable"},503);
       const text = plan ? JSON.stringify({shots: ["Wide left", "Balanced right", "Closer foreground", "Distant clearing"].map((label,i)=>({label,direction: `Shot ${i+1}: ${label}. Place the entire RV at horizontal center ${[25,70,45,55][i]} percent, width ${[20,32,48,13][i]} percent, on the visible level gravel clearing. Keep its visible side, backdrop camera and horizon, vegetation and source texture unchanged; match wheel contact and daylight shadows.`}))}) : input.text?.format
         ? JSON.stringify({

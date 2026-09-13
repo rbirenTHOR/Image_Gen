@@ -944,7 +944,7 @@ export default function Studio() {
           </span>
         </div>
         <p className="selection-help">
-          {b.stage === "compose" && b.jobs.some(j => j.shot_label) ? "Four placements planned from your RV and backdrop. " : ""}Save any photos you like to your campaign. Select one photo to
+          {b.stage === "compose" && b.jobs.some(j => j.shot_label) ? b.jobs.every(j => j.shot_label?.startsWith("Preset ·")) ? "Automatic scene assessment was unavailable. Using four placement presets with your source photos. " : "Four placements planned from your RV and backdrop. " : ""}Save any photos you like to your campaign. Select one photo to
           continue editing.
         </p>
         <Progress
