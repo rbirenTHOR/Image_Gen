@@ -11,3 +11,9 @@ Live-source verification used the actual Commons API for Alaska landscape. Eligi
 Mobile refinement: setting tabs wrap at narrow widths; the selection footer is absent during discovery and does not float over the unselected landscape library. Imported 4K photos have an accurate 4K badge instead of inheriting the curated catalog's 8K label.
 
 Source API references: https://www.mediawiki.org/wiki/API:Imageinfo and https://www.mediawiki.org/wiki/Help:CirrusSearch . Photo availability and metadata depend on Wikimedia Commons. Sparse 8K results can be broadened with 4K or a less specific place name.
+
+## Search recovery refinement — September 13, 2026
+
+Detailed queries now normalize common spelling errors and, when empty, retry with the place or event words. Two-word names stay together as a phrase. Removed the incomplete license-template prefilter; actual public-domain/CC0 metadata validation still applies to both search and import. Empty eligible source pages can advance once before broader wording is tried. The UI explains the matching query without changing resolution or license requirements, and pagination keeps using that successful query. Empty 8K searches offer an explicit 4K action; 4K searches no longer suggest selecting the already-active 4K setting.
+
+The exact reported query `burning man concenrt open area` at 4K returned 37 eligible real-source photographs through the local application API after broadening to `burning man`. No images were generated or imported for this check. Validation: 12 domain tests, TypeScript, and 9 discovery browser cases passed across desktop light/dark and mobile; the final phrase-matching adjustment passed all 3 focused typo/recovery/pagination cases.

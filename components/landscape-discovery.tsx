@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
-import { landscapeEnvironments, type LandscapeResult, type LandscapeSearch } from '@/lib/landscape-discovery';
+import { landscapeEnvironments, landscapeQueries, type LandscapeResult, type LandscapeSearch } from '@/lib/landscape-discovery';
 import type { Asset } from '@/lib/domain';
 
 export default function LandscapeDiscovery({ onBack, onImported, canUse }: {
@@ -14,6 +14,7 @@ export default function LandscapeDiscovery({ onBack, onImported, canUse }: {
   const [query,setQuery]=useState(''), [resolution,setResolution]=useState('8k');
   const [results,setResults]=useState<LandscapeResult[]>([]),[next,setNext]=useState<number|null>(null);
   const [applied,setApplied]=useState<{query:string;resolution:string}|null>(null);
+  const [matchedQuery,setMatchedQuery]=useState(''),[broadened,setBroadened]=useState(false);
   const [loading,setLoading]=useState(false),[error,setError]=useState('');
   const [review,setReview]=useState<LandscapeResult|null>(null),[name,setName]=useState('');
   const [environment,setEnvironment]=useState('other'),[ground,setGround]=useState('scenery'),[note,setNote]=useState('');
@@ -21,19 +22,22 @@ export default function LandscapeDiscovery({ onBack, onImported, canUse }: {
   const [previewFailed,setPreviewFailed]=useState(false),[previewLoaded,setPreviewLoaded]=useState(false),[previewRevision,setPreviewRevision]=useState(0);
   const abort=useRef<AbortController|null>(null);
   useEffect(()=>()=>abort.current?.abort(),[]);
-  async function search(offset=0, suggested?:string) {
-    const params=offset&&applied?applied:{query:(suggested??query).trim(),resolution};
+  async function search(offset=0, suggested?:string, newResolution?:string) {
+    const params=offset&&applied?{...applied,query:matchedQuery||applied.query}:{query:(suggested??query).trim(),resolution:newResolution??resolution};
     if(params.query.length<2)return;
     if(suggested)setQuery(suggested);
+    if(newResolution)setResolution(newResolution);
     abort.current?.abort(); const controller=new AbortController(); abort.current=controller;
     setLoading(true);setError('');setSuccess('');
-    if(!offset){setResults([]);setNext(null);setApplied(params);}
+    if(!offset){setResults([]);setNext(null);setApplied(params);setMatchedQuery('');setBroadened(false);}
     try {
       const r=await fetch('/api/studio/landscape-search?'+new URLSearchParams({...params,offset:String(offset)}),{signal:controller.signal});
       const data=await r.json() as LandscapeSearch & {error?:string};
       if(!r.ok)throw new Error(data.error||'Search did not complete. Please retry.');
       setResults(old=>offset?[...old,...data.photos.filter(p=>!old.some(o=>o.pageId===p.pageId))]:data.photos);
       setNext(data.nextOffset);
+      setMatchedQuery(data.matchedQuery);
+      if(!offset)setBroadened(data.broadened);
     }catch(e){if(!controller.signal.aborted)setError(e instanceof Error?e.message:'Search did not complete.');}
     finally{if(!controller.signal.aborted)setLoading(false);}
   }
@@ -58,13 +62,14 @@ export default function LandscapeDiscovery({ onBack, onImported, canUse }: {
       <div><label htmlFor="discovery-resolution">Original resolution</label><select id="discovery-resolution" value={resolution} onChange={e=>setResolution(e.target.value)} disabled={loading}><option value="8k">Native 8K+ · best detail</option><option value="4k">4K+ · more choices</option></select></div>
       <Button type="submit" disabled={loading||query.trim().length<2}>{loading?<LoaderCircle className="spin"/>:<Search/>}{loading?'Searching…':'Search photos'}</Button>
     </form>
-    <div className="discovery-suggestions" aria-label="Suggested searches">{['Alaska landscape','forest clearing','desert road','mountain lake'].map(q=><Button variant="outline" size="sm" key={q} disabled={loading} onClick={()=>void search(0,q)}>{q}</Button>)}</div>
+    <div className="discovery-suggestions" aria-label="Suggested searches">{['Alaska landscape','Burning Man','Black Rock Desert','forest clearing','desert road'].map(q=><Button variant="outline" size="sm" key={q} disabled={loading} onClick={()=>void search(0,q)}>{q}</Button>)}</div>
     <p className="discovery-source-note">Wikimedia Commons · Public domain & CC0 only · Landscape format · {resolution==='8k'?'At least 7,680 pixels wide':'At least 3,840 × 2,160 pixels'}. No AI image generation.</p>
     {success&&<div className="discovery-success" role="status"><Check size={18}/><span>{success}</span><Button variant="outline" size="sm" onClick={onBack}>View library</Button></div>}
     {error&&<div className="discovery-error" role="alert"><p>{error}</p><Button variant="outline" onClick={()=>void search(results.length&&next?next:0)}>Retry search</Button></div>}
     {!applied&&!loading&&<div className="discovery-empty"><Mountain size={32}/><h3>Start with a place you want to shoot.</h3><p>Try a park, region or type of scenery. Look for level ground, a useful camera angle and natural light.</p></div>}
-    {applied&&<p className="discovery-count" role="status">{loading?`Searching for “${applied.query}”…`:`${results.length} photos found for “${applied.query}” · ${applied.resolution.toUpperCase()}+ originals`}</p>}
-    {!loading&&applied&&!results.length&&!error&&<div className="discovery-empty"><h3>No eligible photos in these results.</h3><p>Try a broader place name or choose 4K+ for more options. We skip unsupported licenses, smaller files and tagged generated artwork.</p></div>}
+    {applied&&<p className="discovery-count" role="status">{loading?`Searching for “${applied.query}” and checking broader matches…`:`${results.length} photos found for “${matchedQuery||applied.query}” · ${applied.resolution.toUpperCase()}+ originals`}</p>}
+    {broadened&&!loading&&!error&&results.length>0&&<div className="discovery-success" role="status"><Search size={18}/><span>Broadened your search to “{matchedQuery}”. Your {applied?.resolution.toUpperCase()}+ resolution and public-domain/CC0 filters are unchanged.</span></div>}
+    {!loading&&applied&&!results.length&&!error&&<div className="discovery-empty"><h3>No eligible photos in these results.</h3><p>We tried broader wording too. {applied.resolution==='8k'?'Search at 4K+ to include more originals.':'Try the place or event name on its own, without shot directions.'} Photos must still meet the selected size and public-domain/CC0 requirements.</p><div className="discovery-suggestions">{applied.resolution==='8k'&&<Button variant="outline" onClick={()=>void search(0,applied.query,'4k')}>Search at 4K+</Button>}{landscapeQueries(applied.query).slice(1).map(q=><Button key={q} variant="outline" onClick={()=>void search(0,q)}>Search “{q}”</Button>)}</div></div>}
     <div className="discovery-grid" aria-busy={loading}>
       {results.map(p=><article key={p.pageId} className="discovery-card">
         <button className="discovery-photo" onClick={()=>openReview(p)} aria-label={'Review '+p.name}><img src={p.previewUrl} alt={p.name} loading="lazy" referrerPolicy="no-referrer"/><span>{p.width>=7680?'8K+':'4K+'} original</span></button>

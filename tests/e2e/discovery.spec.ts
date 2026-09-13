@@ -9,6 +9,25 @@ test.beforeEach(async({context,page})=>{
   await page.route('https://thumb.wikimedia.org/**',route=>route.fulfill({contentType:'image/jpeg',body:jpeg}));
 });
 
+test('A detailed misspelled search broadens transparently and paginates the working query',async({page})=>{
+  await page.goto('/?view=library&kind=landscape');
+  await page.getByRole('button',{name:'Find real photos',exact:true}).click();
+  await page.getByLabel('Place or scenery').fill('burning man concenrt open area');
+  await page.getByLabel('Original resolution').selectOption('4k');
+  await page.getByRole('button',{name:'Search photos',exact:true}).click();
+  await expect(page.locator('.discovery-card')).toHaveCount(2);
+  await expect(page.getByText('Broadened your search to “burning man”. Your 4K+ resolution and public-domain/CC0 filters are unchanged.',{exact:true})).toBeVisible();
+  await expect(page.getByLabel('Place or scenery')).toHaveValue('burning man concenrt open area');
+  await page.getByRole('button',{name:'Find more photos',exact:true}).click();
+  await expect(page.locator('.discovery-card')).toHaveCount(4);
+  const log=await(await page.request.get('http://127.0.0.1:6199/__control')).json();
+  const requests=log.records.filter((r:any)=>r.kind==='discovery'&&r.query?.includes('burning'));
+  expect(requests.at(-1).query).toContain('"burning man"');
+  expect(requests.at(-1).query).not.toContain('concert');
+  expect(requests.every((r:any)=>!r.query.includes('hastemplate:'))).toBe(true);
+  expect(requests.every((r:any)=>r.query.includes('filew:>3839'))).toBe(true);
+});
+
 test('Search, review, failed import recovery, duplicate protection and reload',async({page},info)=>{
   const index=['desktop-light','mobile-light','desktop-dark'].indexOf(info.project.name)+1;
   await page.goto('/?view=library&kind=landscape');

@@ -1,7 +1,15 @@
 import { parseCompositionShots, placementPresets } from '../lib/composition-plan.ts';
-import {parseLandscape, commonsImageUrl, sourceText} from '../lib/landscape-discovery.ts';
+import {parseLandscape, commonsImageUrl, sourceText, landscapeQueries} from '../lib/landscape-discovery.ts';
 import test from "node:test";
 import assert from "node:assert/strict";
+test('Natural landscape requests broaden without changing place words into source operators',()=>{
+  assert.deepEqual(landscapeQueries('burning man concenrt open area'),['burning man concert open area','burning man']);
+  assert.deepEqual(landscapeQueries('Alaska landscape'),['Alaska landscape','Alaska']);
+  assert.deepEqual(landscapeQueries('Black Rock Desert open area'),['Black Rock Desert open area','Black Rock Desert','Black Rock']);
+  assert.deepEqual(landscapeQueries('!!!'),[]);
+  assert.ok(landscapeQueries('mountian lake')[0].includes('mountain'));
+  assert.ok(landscapeQueries('x filew:>10 OR license:any').every(q=>!/[":><]/.test(q)));
+});
 test('Photo discovery validates source hosts, rights, dimensions and artwork metadata',()=>{
   const photo={pageid:123,title:'File:Meadow.jpg',imageinfo:[{url:'https://upload.wikimedia.org/wikipedia/commons/a/a1/Meadow.jpg',thumburl:'https://thumb.wikimedia.org/wikipedia/commons/thumb/a/a1/Meadow.jpg/1280px-Meadow.jpg',width:8000,height:5000,size:12_000_000,mime:'image/jpeg',extmetadata:{LicenseShortName:{value:'CC0'},Artist:{value:'<b>Photographer</b>'},Categories:{value:'Nature photographs'}}}]};
   assert.equal(parseLandscape(photo,7680)?.photographer,'Photographer');

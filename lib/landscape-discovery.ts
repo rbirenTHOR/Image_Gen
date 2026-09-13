@@ -1,7 +1,15 @@
 import type { NaturePhoto } from './nature-catalog';
 
 export type LandscapeResult = NaturePhoto & { pageId: number; previewUrl: string; bytes: number; description: string; existingAssetId?: string };
-export type LandscapeSearch = { photos: LandscapeResult[]; nextOffset: number | null; excluded: number };
+export type LandscapeSearch = { photos: LandscapeResult[]; nextOffset: number | null; excluded: number; matchedQuery: string; broadened: boolean };
+/** Keep place words, then relax descriptive requirements when the exact search is empty. */
+export function landscapeQueries(input: string): string[] {
+  const spelling:Record<string,string>={concenrt:'concert',conert:'concert',mountian:'mountain',moutain:'mountain',forrest:'forest',landscpae:'landscape'};
+  const words=(input.match(/[\p{L}\p{N}]+/gu)??[]).slice(0,16).map(w=>spelling[w.toLowerCase()]??w);
+  const descriptive=new Set(['a','an','the','in','at','with','and','of','for','some','real','authentic','photo','photos','photograph','photographs','image','images','backdrop','backdrops','background','backgrounds','open','wide','large','area','areas','space','spaces','landscape','landscapes','scenery','concert','festival']);
+  const focus=words.filter(w=>!descriptive.has(w.toLowerCase()));
+  return [...new Set([words.join(' '),focus.join(' '),focus.slice(0,2).join(' ')].filter(q=>q.length>=2))];
+}
 export const landscapeEnvironments = ['mountain', 'forest', 'meadow', 'road', 'desert', 'coast', 'lake', 'snow', 'other'] as const;
 
 /** Source HTML is displayed only as plain text; never inserted into the DOM. */

@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { parseLandscape, landscapeEnvironments, type LandscapeResult, type LandscapeSearch } from '@/lib/landscape-discovery';
+import { parseLandscape, landscapeQueries, landscapeEnvironments, type LandscapeResult, type LandscapeSearch } from '@/lib/landscape-discovery';
 import { naturePhotoById } from '@/lib/nature-catalog';
 import { all, one, run, ApiError, runtime } from './runtime';
 import { providerFetch } from './provider-fetch';
@@ -35,13 +35,28 @@ async function existingPhoto(pageId:number,owner:string) {
 }
 export async function searchLandscapes(input:unknown,owner:string):Promise<LandscapeSearch> {
   const data = searchSchema.parse(input);
-  // Treat the input as words, never source search operators. Keep the source filters authoritative.
-  const words = data.query.match(/[\p{L}\p{N}]+/gu)?.slice(0,16).map(s=>'"'+s+'"').join(' ');
-  if (!words) throw new ApiError(400,'Enter a place or landscape to search.');
+  const queries = landscapeQueries(data.query);
+  if (!queries.length) throw new ApiError(400,'Enter a place or landscape to search.');
   const width = data.resolution === '8k' ? 7680 : 3840;
-  const result = await commons({generator:'search',gsrsearch:`${words} filetype:bitmap filew:>${width-1} fileh:>2159 hastemplate:Cc-zero|PD-USGov-NPS|PD-USGov|PD-self|PD-author -intitle:map -intitle:atlas -intitle:painting`,gsrnamespace:'6',gsrlimit:'40',gsroffset:String(data.offset)});
-  const pages = (result.query?.pages ?? []).sort((a,b)=>(a.index??0)-(b.index??0));
-  const photos = pages.map(p=>parseLandscape(p,width)).filter((p):p is LandscapeResult=>!!p);
+  let photos:LandscapeResult[]=[],matchedQuery=queries[0],nextOffset:number|null=null,excluded=0;
+  // License templates are incomplete and are not a reliable search index. Validate actual
+  // source metadata below, including on import, instead of hiding eligible photos up front.
+  for(const query of data.offset?queries.slice(0,1):queries){
+    matchedQuery=query;
+    const words=query.split(' ').length===2?'"'+query+'"':query.split(' ').map(s=>'"'+s+'"').join(' ');
+    let offset=data.offset;
+    for(let page=0;page<2;page++){
+      const result=await commons({generator:'search',gsrsearch:`${words} filetype:bitmap filew:>${width-1} fileh:>2159 -intitle:map -intitle:atlas -intitle:painting`,gsrnamespace:'6',gsrlimit:'40',gsroffset:String(offset)});
+      const pages=(result.query?.pages??[]).sort((a,b)=>(a.index??0)-(b.index??0));
+      photos=pages.map(p=>parseLandscape(p,width)).filter((p):p is LandscapeResult=>!!p);
+      excluded+=pages.length-photos.length;
+      const next=result.continue?.gsroffset;
+      nextOffset=typeof next==='number'&&next>offset&&next<=480?next:null;
+      if(photos.length||nextOffset===null)break;
+      offset=nextOffset;
+    }
+    if(photos.length)break;
+  }
   // One owned-library query, independent of the number of search results.
   const owned = await all<Asset>('SELECT * FROM assets WHERE owner_id=? AND source=?',owner,'sourced-photo');
   for (const photo of photos) {
@@ -49,8 +64,7 @@ export async function searchLandscapes(input:unknown,owner:string):Promise<Lands
     if (existing) photo.existingAssetId=existing.id;
     else if (naturePhotoById.has(photo.id)) photo.existingAssetId=photo.id;
   }
-  const next=result.continue?.gsroffset;
-  return {photos,nextOffset:typeof next==='number'&&next>data.offset&&next<=480?next:null,excluded:pages.length-photos.length};
+  return {photos,nextOffset,excluded,matchedQuery,broadened:matchedQuery.toLowerCase()!==data.query.trim().toLowerCase()};
 }
 export async function importLandscape(input:unknown,owner:string) {
   const data=importSchema.parse(input);

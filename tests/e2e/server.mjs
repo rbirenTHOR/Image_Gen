@@ -124,6 +124,7 @@ const provider = createServer(async (req, res) => {
         return json({query:{pages:[p]}});
       }
       const q=u.searchParams.get('gsrsearch')??'';
+      if(q.toLowerCase().includes('burning') && (q.includes('concert')||q.includes('open')||q.includes('hastemplate:')))return json({query:{pages:[]}});
       if(q.includes('nomatchingbackdrop'))return json({query:{pages:[]}});
       const base=Number((q.match(/case(\d+)/)||[])[1]??1)*100;
       const offset=Number(u.searchParams.get('gsroffset')||0);
