@@ -89,6 +89,8 @@ export const jobs = sqliteTable(
     leaseUntil: integer("lease_until").notNull().default(0),
     elapsedMs: integer("elapsed_ms"),
     attempts: integer("attempts").notNull().default(1),
+    shotLabel: text("shot_label").notNull().default(""),
+    generationPrompt: text("generation_prompt").notNull().default(""),
   },
   (t) => [index("jobs_batch").on(t.batchId)],
 );

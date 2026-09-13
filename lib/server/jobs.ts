@@ -1,6 +1,7 @@
 import { providerFetch } from "./provider-fetch";
 import { all, one, run, runtime, ApiError } from "./runtime";
 import { getAsset, getProject } from "./library";
+import { planComposition } from "./composition-plan";
 import { modelImages } from "./model-images";
 import {
   modelFor,
@@ -51,7 +52,7 @@ export async function batchView(id: string, owner: string) {
   );
   if (!b) throw new ApiError(404, "Generation batch not found.");
   const jobs = await all<Job>(
-    "SELECT id,batch_id,slot,status,result_asset_id,error,created_at,updated_at,request_id,elapsed_ms FROM jobs WHERE batch_id=? ORDER BY slot",
+    "SELECT id,batch_id,slot,status,result_asset_id,error,created_at,updated_at,request_id,elapsed_ms,shot_label,generation_prompt FROM jobs WHERE batch_id=? ORDER BY slot",
     id,
   );
   return { ...b, jobs };
@@ -63,7 +64,7 @@ async function submitJob(job: StoredJob, b: StoredBatch, images: string[]) {
       body: JSON.stringify(
         providerInput(
           b.stage,
-          buildPrompt(b.stage, b.prompt, job.slot),
+          job.generation_prompt || buildPrompt(b.stage, b.prompt, job.slot),
           b.aspect,
           images,
         ),
@@ -176,6 +177,7 @@ export async function startBatch(raw: unknown, owner: string) {
       "Two batches are already working. Let one finish before starting another.",
     );
   const images = await modelImages(inputs, owner);
+  const shots = data.stage === "compose" ? await planComposition(images, data.prompt) : null;
   const endpoint = modelFor(data.stage),
     now = Date.now();
   const statements = [
@@ -202,9 +204,9 @@ export async function startBatch(raw: unknown, owner: string) {
     statements.push(
       runtime()
         .DB.prepare(
-          "INSERT INTO jobs(id,batch_id,slot,status,created_at,updated_at) VALUES(?,?,?,?,?,?)",
+          "INSERT INTO jobs(id,batch_id,slot,status,created_at,updated_at,shot_label,generation_prompt) VALUES(?,?,?,?,?,?,?,?)",
         )
-        .bind(ids[slot], data.id, slot, "submitting", now, now),
+        .bind(ids[slot], data.id, slot, "submitting", now, now, shots?.[slot].label ?? "", buildPrompt(data.stage, data.prompt, slot, shots?.[slot].direction)),
     );
   try {
     await runtime().DB.batch(statements);
@@ -407,7 +409,7 @@ async function saveImage(
         mime,
         width,
         height,
-        buildPrompt(b.stage, b.prompt, job.slot),
+        job.generation_prompt || buildPrompt(b.stage, b.prompt, job.slot),
         b.endpoint,
         b.quality,
         inputs[0] ?? null,

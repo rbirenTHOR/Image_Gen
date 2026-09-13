@@ -79,6 +79,8 @@ export interface Project {
   version: number;
 }
 export interface Job {
+  shot_label?: string;
+  generation_prompt?: string;
   id: string;
   batch_id: string;
   slot: number;
@@ -137,6 +139,7 @@ export function buildPrompt(
   stage: GenerationStage,
   brief: string,
   slot: number,
+  placement?: string,
 ) {
   const instructions: Record<GenerationStage, string> = {
     campaign:
@@ -154,7 +157,13 @@ export function buildPrompt(
     prop: "Create a realistic isolated physical prop reference for an RV lifestyle photoshoot. Show the requested object clearly against a simple neutral background. No text, branding or people.",
   };
   const isEdit = ["compose", "people", "objects", "variation"].includes(stage);
-  const variations = isEdit
+  const compositionVariations = [
+    "Wide establishing shot: place the RV in the far midground on usable ground, roughly 18–24% of image width, toward the left third if terrain allows. Give the landscape most of the frame.",
+    "Opposite-side composition: place the RV toward the right third on a different usable patch of ground, roughly 28–34% of image width. Leave open scenery to its left.",
+    "Closer product composition: move the RV into a feasible nearer ground plane, roughly 42–50% of image width. Keep the entire unit visible with breathing room around it.",
+    "Depth-led composition: place the RV farther along a visible ground corridor or clearing, roughly 12–17% of image width. Use a modest diagonal alignment only if supported by the source RV view.",
+  ];
+  const variations = stage === "compose" ? compositionVariations : isEdit
     ? [
         "Use a restrained execution of the requested edit; keep the source framing and all untouched scenery.",
         "Offer a second execution of only the requested change; preserve camera, horizon and untouched textures.",
@@ -171,7 +180,7 @@ export function buildPrompt(
     stage === "landscape" || stage === "campaign"
       ? `\n\nENVIRONMENT\n${environmentBrief}`
       : "";
-  return `${instructions[stage]}\n\nCREATIVE DIRECTION\n${brief}\n\nPHOTOGRAPHIC STANDARD\n${photographicBrief}${environment}\n\nVARIATION ${slot + 1}\n${variations[slot]}`;
+  return `${instructions[stage]}\n\nCREATIVE DIRECTION\n${brief}\n\nPHOTOGRAPHIC STANDARD\n${photographicBrief}${environment}\n\nVARIATION ${slot + 1}\n${stage === "compose" && placement ? placement : variations[slot]}${stage === "compose" ? "\nPlacement must obey explicit user constraints and visible terrain. Do not force a vehicle onto water, steep slopes or vegetation. Keep the backdrop camera and horizon fixed; create variation through vehicle position, distance and modest supported orientation. Do not mirror lettering or invent unseen vehicle details. Produce one photograph, never a collage." : ""}`;
 }
 export function providerInput(
   stage: GenerationStage,

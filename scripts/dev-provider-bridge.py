@@ -20,7 +20,7 @@ class Handler(BaseHTTPRequestHandler):
  def handle_proxy(self):
   if self.headers.get('X-Bridge-Token')!=TOKEN:self.send_error(403);return
   target=self.headers.get('X-Upstream-URL','');u=urllib.parse.urlparse(target)
-  if u.scheme!='https' or not (u.hostname in ['api.openai.com','queue.fal.run','fal.media','rest.fal.ai','upload.wikimedia.org'] or (u.hostname or '').endswith('.fal.media') or (u.hostname or '').endswith('.falusercontent.com')):self.send_error(403);return
+  if u.scheme!='https' or not (u.hostname in ['api.openai.com','queue.fal.run','fal.run','fal.media','rest.fal.ai','upload.wikimedia.org'] or (u.hostname or '').endswith('.fal.media') or (u.hostname or '').endswith('.falusercontent.com')):self.send_error(403);return
   body=self.rfile.read(int(self.headers.get('Content-Length','0'))) if self.command in ['POST','PUT'] else None
   headers={k:self.headers[k] for k in ['Authorization','Content-Type','X-Fal-Object-Lifecycle','User-Agent'] if self.headers.get(k)}
   req=urllib.request.Request(target,data=body,headers=headers,method=self.command)

@@ -944,7 +944,7 @@ export default function Studio() {
           </span>
         </div>
         <p className="selection-help">
-          Save any photos you like to your campaign. Select one photo to
+          {b.stage === "compose" && b.jobs.some(j => j.shot_label) ? "Four placements planned from your RV and backdrop. " : ""}Save any photos you like to your campaign. Select one photo to
           continue editing.
         </p>
         <Progress
@@ -956,7 +956,7 @@ export default function Studio() {
           {b.jobs.map((j) => {
             const a = byId.get(j.result_asset_id ?? "");
             return a ? (
-              assetCard(a)
+              j.shot_label ? <div className="planned-take" key={j.id}><p className="shot-label">Take {j.slot + 1} · {j.shot_label}</p>{assetCard(a)}</div> : assetCard(a)
             ) : (
               <article className="job-card" key={j.id}>
                 <div className="job-placeholder">
@@ -972,7 +972,7 @@ export default function Studio() {
                     {
                       (
                         {
-                          submitting: "Submitting",
+                          submitting: b.stage === "compose" && !j.shot_label ? "Assessing photos & planning placement" : "Submitting",
                           queued: "Queued",
                           generating: "Generating",
                           saving: "Saving image",
@@ -986,7 +986,7 @@ export default function Studio() {
                   </strong>
                 </div>
                 <div className="job-info">
-                  <span>Take {j.slot + 1}</span>
+                  <span>Take {j.slot + 1}{j.shot_label ? " · " + j.shot_label : ""}</span>
                   {j.error && <p>{j.error}</p>}
                   {["failed", "save_failed"].includes(j.status) && (
                     <Button
@@ -1015,6 +1015,7 @@ export default function Studio() {
             {new Date(b.created_at).toLocaleString()}
           </p>
           <p className="prompt-readback">{b.prompt}</p>
+          {b.jobs.filter(j => j.shot_label).map(j => <details key={j.id} className="shot-prompt"><summary>Take {j.slot + 1} · {j.shot_label}</summary><p className="prompt-readback">{j.generation_prompt}</p></details>)}
           <p>
             Provider request IDs:{" "}
             {b.jobs.map((j) => j.request_id || "Awaiting receipt").join(", ")}
@@ -1801,7 +1802,7 @@ export default function Studio() {
                     ),
                 )}
               </div>
-              {landscape?.photo_source && <div className="source-note"><strong>Real-photo backdrop</strong><p>The original {landscape.width.toLocaleString()} × {landscape.height.toLocaleString()} photo is used as your reference. AI compositions are new images up to 4K; inspect that the scenery and RV remain faithful.</p></div>}
+              {landscape?.photo_source && <div className="source-note"><strong>Real-photo backdrop</strong><p>The original {landscape.width.toLocaleString()} × {landscape.height.toLocaleString()} photo supplies your reference. Large files are JPEG-optimized at the same pixel dimensions; the original stays intact. AI compositions are new images up to 4K; inspect that the scenery and RV remain faithful.</p></div>}
               {generator()}
               <footer className="workspace-footer">
                 <div>

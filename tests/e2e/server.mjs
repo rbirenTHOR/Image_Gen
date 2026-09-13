@@ -7,6 +7,7 @@ import {
   symlink,
   mkdir,
   rm,
+  readdir,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { resolve, join } from "node:path";
@@ -58,7 +59,7 @@ await writeFile(
 );
 const sql = (
   await Promise.all(
-    ["0000_whole_ben_grimm.sql", "0001_huge_slipstream.sql"].map((f) =>
+    (await readdir(resolve(dir, "drizzle"))).filter(f=>f.endsWith(".sql")).sort().map((f) =>
       readFile(resolve(dir, "drizzle", f), "utf8"),
     ),
   )
@@ -111,8 +112,14 @@ const provider = createServer(async (req, res) => {
     if (u.hostname === "upload.wikimedia.org") {
       records.push({kind: "nature-original", url: u.toString()});
       if (controls.failNature > 0) { controls.failNature--; return json({error:"Fixture source unavailable"},503); }
-      res.writeHead(200, {"Content-Type": "image/jpeg", "Content-Length": jpeg.length});
-      return res.end(jpeg);
+      const source = controls.largeNature ? Buffer.concat([jpeg,Buffer.alloc(26_000_000)]) : jpeg;
+      res.writeHead(200, {"Content-Type": "image/jpeg", "Content-Length": source.length});
+      return res.end(source);
+    }
+    if (u.hostname === "rest.fal.ai") return json({upload_url:"https://fal.media/e2e/reference-upload",file_url:"https://fal.media/e2e/reference"});
+    if (u.hostname === "fal.run") {
+      const input=JSON.parse(body); records.push({kind:"compression",input});
+      return json({image:{url:"https://fal.media/e2e/compressed.jpg",width:8368,height:5584},compressed_size:jpeg.length});
     }
     if (u.hostname === "queue.fal.run") {
       if (req.method === "POST") {
@@ -172,6 +179,7 @@ const provider = createServer(async (req, res) => {
       const requestInput = JSON.parse(body);
       records.push({
         kind: "chat",
+        plan: requestInput.text?.format?.name === "rv_composition_plan",
         at: Date.now(),
         visionDetails: Array.isArray(requestInput.input)
           ? requestInput.input.flatMap((m) =>
@@ -191,7 +199,9 @@ const provider = createServer(async (req, res) => {
       const input = JSON.parse(body);
       const prompt =
         "Preserve the exact RV, body graphics, geometry and camera position. Use soft afternoon sunlight with realistic shadows and naturally detailed grass and gravel. Keep the landscape recognizable and do not add subjects unless explicitly requested. Match scale, perspective and ground contact; avoid oversharpening and artificial colors.";
-      const text = input.text?.format
+      const plan = input.text?.format?.name === "rv_composition_plan";
+      if (plan && controls.failPlan) return json({error:"Planning unavailable"},503);
+      const text = plan ? JSON.stringify({shots: ["Wide left", "Balanced right", "Closer foreground", "Distant clearing"].map((label,i)=>({label,direction: `Shot ${i+1}: ${label}. Place the entire RV at horizontal center ${[25,70,45,55][i]} percent, width ${[20,32,48,13][i]} percent, on the visible level gravel clearing. Keep its visible side, backdrop camera and horizon, vegetation and source texture unchanged; match wheel contact and daylight shadows.`}))}) : input.text?.format
         ? JSON.stringify({
             reply:
               "Keep the RV and framing, and soften the afternoon light. The prompt below is ready to refine before generating.",

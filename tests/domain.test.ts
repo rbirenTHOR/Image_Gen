@@ -137,3 +137,18 @@ test("Native high-resolution outputs preserve aspect and satisfy fal pixel const
     ),
   );
 });
+
+ test("Composition placement plans override default shots without changing other editing stages", () => {
+  const direction = "RV centered at 72% from left and 66% from top, occupying 22% of frame width on the gravel turnout.";
+  const p = buildPrompt("compose", "Keep it distant", 1, direction);
+  assert.ok(p.includes(direction));
+  assert.ok(!p.includes("28–34%"));
+  assert.ok(p.includes("No people or added props"));
+  assert.ok(p.includes("explicit user constraints"));
+  const defaults = [0,1,2,3].map(i=>buildPrompt("compose", "Place the RV", i));
+  assert.ok(defaults[0].includes("18–24%"));
+  assert.ok(defaults[1].includes("right third"));
+  assert.ok(defaults[2].includes("42–50%"));
+  assert.ok(defaults[3].includes("12–17%"));
+  assert.ok(!buildPrompt("people", "Add two adults", 1, direction).includes(direction));
+ });
