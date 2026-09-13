@@ -1,4 +1,6 @@
 "use client";
+import { OriginalPhoto } from "@/components/original-photo";
+import { PhotoSource } from "@/components/photo-source";
 import CampaignWorkspace, {
   CampaignHome,
 } from "@/components/campaign-workspace";
@@ -179,6 +181,8 @@ export default function Studio() {
     [libraryKind, setLibraryKind] = useState("rv"),
     [query, setQuery] = useState(""),
     [filter, setFilter] = useState("all"),
+    [landscapeSource, setLandscapeSource] = useState("photos"),
+    [groundFilter, setGroundFilter] = useState("all"),
     [generation, setGeneration] = useState<GenerationStage>("people"),
     [aspect, setAspect] = useState("landscape_4_3"),
     [briefs, setBriefs] = useState(defaults),
@@ -798,7 +802,7 @@ export default function Studio() {
         >
           <img
             src={
-              a.url +
+              (a.thumbnail_url || a.url) +
               (previewRevision[a.id] ? "?preview=" + previewRevision[a.id] : "")
             }
             alt={a.name}
@@ -835,6 +839,7 @@ export default function Studio() {
             </small>
           </span>
         </button>
+        {a.photo_source && <div className="photo-card-detail"><span>{a.photo_source.suitability === "placement" ? "Open ground" : "Scenic reference"}</span><span>{a.width.toLocaleString()} × {a.height.toLocaleString()}</span><p>{a.photo_source.location}</p></div>}
         <div className="asset-actions">
           {project && (
             <Button
@@ -853,7 +858,9 @@ export default function Studio() {
             </Button>
           )}
           <span>
-            {a.source === "ai-sample"
+            {a.source === "sourced-photo"
+              ? "Real photo · 8K+"
+              : a.source === "ai-sample"
               ? "AI sample"
               : a.approved
                 ? "Approved"
@@ -872,6 +879,7 @@ export default function Studio() {
             onClick={() => {
               setZoom(a);
               setZoomActual(false);
+              if (a.kind === "landscape") setCompare(false);
             }}
           >
             <Expand />
@@ -1203,7 +1211,7 @@ export default function Studio() {
   const filterValues = [
     ...new Set(
       assets
-        .filter((a) => a.kind === libKind && a.in_library)
+        .filter((a) => a.kind === libKind && a.in_library && (libKind !== "landscape" || landscapeSource === "all" || (landscapeSource === "photos" ? a.source === "sourced-photo" : a.source !== "sourced-photo")))
         .map((a) => (libKind === "rv" ? a.brand : a.environment))
         .filter(Boolean),
     ),
@@ -1213,8 +1221,10 @@ export default function Studio() {
       (libKind === "approved"
         ? a.approved
         : a.kind === libKind && a.in_library) &&
+      (libKind !== "landscape" || landscapeSource === "all" || (landscapeSource === "photos" ? a.source === "sourced-photo" : a.source !== "sourced-photo")) &&
+      (libKind !== "landscape" || groundFilter === "all" || a.photo_source?.suitability === groundFilter) &&
       (!query ||
-        [a.name, a.brand, a.model, a.year, a.environment, a.angle]
+        [a.name, a.brand, a.model, a.year, a.environment, a.angle, a.photo_source?.location, a.photo_source?.photographer]
           .join(" ")
           .toLowerCase()
           .includes(query.toLowerCase())) &&
@@ -1224,6 +1234,10 @@ export default function Studio() {
   function library() {
     return (
       <>
+        {libKind === "landscape" && <div className="backdrop-intro">
+          <div><p>{landscapeSource === "photos" ? "Original nature photography, ready to use. Choose a setting with room for your RV." : "Reuse your uploaded and generated landscapes."}</p></div>
+          <Choice value={landscapeSource} onChange={(v) => { setLandscapeSource(v); setFilter("all"); setGroundFilter("all"); setQuery(""); }} label="Backdrop collection" options={[["photos", "Real photographs"], ["mine", "Saved & generated"], ["all", "All backdrops"]]} />
+        </div>}
         <div className="library-toolbar">
           <div className="search-field">
             <Search size={18} />
@@ -1232,7 +1246,7 @@ export default function Studio() {
               placeholder={
                 libKind === "rv"
                   ? "Search brand, model, year or angle…"
-                  : "Search your library…"
+                  : libKind === "landscape" ? "Search place, scenery or photographer…" : "Search your library…"
               }
               value={query}
               onChange={(e) => setQuery(e.target.value)}
@@ -1250,7 +1264,10 @@ export default function Studio() {
             />
           )}
         </div>
-        {!libraryAssets.length && (query || filter !== "all") && (
+        {libKind === "landscape" && landscapeSource !== "mine" && <div className="ground-filters" role="group" aria-label="Ground space">
+          {[["all", "All scenes"], ["placement", "Open ground"], ["scenery", "Scenic references"]].map(([value, label]) => <Button key={value} variant={groundFilter === value ? "default" : "outline"} size="sm" aria-pressed={groundFilter === value} onClick={() => setGroundFilter(value)}>{label}</Button>)}
+        </div>}
+        {!libraryAssets.length && (query || filter !== "all" || groundFilter !== "all") && (
           <div className="empty-state" role="status">
             <Search />
             <h2>No matching images</h2>
@@ -1260,12 +1277,14 @@ export default function Studio() {
               onClick={() => {
                 setQuery("");
                 setFilter("all");
+                setGroundFilter("all");
               }}
             >
               Clear search
             </Button>
           </div>
         )}
+        {libKind === "landscape" && <p className="backdrop-count" role="status">{libraryAssets.length} backdrops{landscapeSource === "photos" ? " · Native 8K+ originals · No generation needed" : ""}</p>}
         <div
           className={
             "library-grid " +
@@ -1450,6 +1469,7 @@ export default function Studio() {
               <p className="eyebrow">YOUR CAMPAIGN</p>
               <button
                 className="campaign-title"
+                title={project?.name || "A season outside"}
                 onClick={() => setBriefOpen(true)}
               >
                 {project?.name || "A season outside"}
@@ -1610,7 +1630,7 @@ export default function Studio() {
                         src={
                           byId.get(
                             p.current_id ?? p.landscape_id ?? p.rv_id ?? "",
-                          )!.url
+                          )!.thumbnail_url || byId.get(p.current_id ?? p.landscape_id ?? p.rv_id ?? "")!.url
                         }
                         alt="Campaign preview"
                       />
@@ -1719,10 +1739,10 @@ export default function Studio() {
             <>
               <Tabs value={tab} onValueChange={setTab}>
                 <TabsList variant="line">
-                  <TabsTrigger value="library">From your library</TabsTrigger>
+                  <TabsTrigger value="library">Photo library</TabsTrigger>
                   <TabsTrigger value="generate">
                     <Sparkles />
-                    Create a new setting
+                    Generate a setting
                   </TabsTrigger>
                 </TabsList>
                 <TabsContent value="library">{library()}</TabsContent>
@@ -1737,7 +1757,7 @@ export default function Studio() {
                   <Scan size={14} />
                   Open foreground
                 </span>
-                <span>Reusable backdrop</span>
+                <span>Originals preserved</span>
               </div>
               <footer className="workspace-footer">
                 <div>
@@ -1769,7 +1789,7 @@ export default function Studio() {
                   (a, i) =>
                     a && (
                       <button key={a.id} onClick={() => setZoom(a)}>
-                        <img src={a.url} alt={a.name} />
+                        <img src={a.thumbnail_url || a.url} alt={a.name} />
                         <div>
                           <small>
                             {i === 0 ? "Your RV" : "Your landscape"}
@@ -1781,6 +1801,7 @@ export default function Studio() {
                     ),
                 )}
               </div>
+              {landscape?.photo_source && <div className="source-note"><strong>Real-photo backdrop</strong><p>The original {landscape.width.toLocaleString()} × {landscape.height.toLocaleString()} photo is used as your reference. AI compositions are new images up to 4K; inspect that the scenery and RV remain faithful.</p></div>}
               {generator()}
               <footer className="workspace-footer">
                 <div>
@@ -1892,7 +1913,7 @@ export default function Studio() {
                         key={a.id}
                         onClick={() => selectImage(a.id, "lifestyle")}
                       >
-                        <img src={a.url} alt={a.name} />
+                        <img src={a.thumbnail_url || a.url} alt={a.name} />
                         <span>
                           {a.name}
                           {a.id === project?.current_id
@@ -2173,13 +2194,14 @@ export default function Studio() {
           <DialogHeader>
             <DialogTitle>{zoom?.name}</DialogTitle>
             <DialogDescription>
-              {zoom?.source === "ai-sample"
+              {zoom?.source === "sourced-photo" ? "Original sourced photograph. Inspect the full-resolution image and its provenance." : zoom?.source === "ai-sample"
                 ? "AI-generated sample, not an actual branded unit."
                 : zoom?.source === "uploaded"
                   ? "Original uploaded reference."
                   : "Inspect this generated image against your source."}
             </DialogDescription>
           </DialogHeader>
+          {zoom?.photo_source && <PhotoSource asset={zoom} />}
           <div className="button-row">
             <Button
               variant="outline"
@@ -2209,13 +2231,7 @@ export default function Studio() {
             }
           >
             <div>
-              {zoom && (
-                <img
-                  src={zoom.url}
-                  alt={zoom.name}
-                  className={zoomActual ? "actual-size" : ""}
-                />
-              )}
+              {zoom && (zoom.photo_source ? <OriginalPhoto key={zoom.id} src={zoom.url} alt={zoom.name} className={zoomActual ? "actual-size" : ""} /> : <img src={zoom.url} alt={zoom.name} className={zoomActual ? "actual-size" : ""} />)}
             </div>
             {compare && rv && zoom?.id !== rv.id && (
               <div>
@@ -2258,7 +2274,7 @@ export default function Studio() {
             </label>
             {[rv, landscape, current].filter(Boolean).map((a, i) => (
               <div className="sheet-asset" key={i}>
-                <img src={a!.url} alt={a!.name} />
+                <img src={a!.thumbnail_url || a!.url} alt={a!.name} />
                 <div>
                   <small>
                     {["RV reference", "Landscape", "Accepted scene"][i]}

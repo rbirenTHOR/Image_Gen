@@ -87,7 +87,7 @@ execFileSync(
     stdio: "pipe",
   },
 );
-let controls = { delay: 900, failSubmit: 0, failSave: 0, failChat: 0 },
+let controls = { delay: 900, failSubmit: 0, failSave: 0, failChat: 0, failNature: 0 },
   records = [],
   jobs = new Map();
 const jpeg = await readFile(resolve(root, "public/images/sample-rv.jpg"));
@@ -108,6 +108,12 @@ const provider = createServer(async (req, res) => {
     if (req.headers["x-bridge-token"] !== "e2e-transport")
       return json({ error: "Forbidden" }, 403);
     const u = new URL(req.headers["x-upstream-url"]);
+    if (u.hostname === "upload.wikimedia.org") {
+      records.push({kind: "nature-original", url: u.toString()});
+      if (controls.failNature > 0) { controls.failNature--; return json({error:"Fixture source unavailable"},503); }
+      res.writeHead(200, {"Content-Type": "image/jpeg", "Content-Length": jpeg.length});
+      return res.end(jpeg);
+    }
     if (u.hostname === "queue.fal.run") {
       if (req.method === "POST") {
         const input = JSON.parse(body);

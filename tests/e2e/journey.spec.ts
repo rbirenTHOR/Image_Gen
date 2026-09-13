@@ -184,7 +184,7 @@ test("Complete wizard: upload, prompt, four choices, people, objects, approval a
   await page
     .getByRole("button", { name: "Choose the setting", exact: true })
     .click();
-  await page.getByRole("tab", { name: "Create a new setting" }).click();
+  await page.getByRole("tab", { name: "Generate a setting" }).click();
   await page
     .getByLabel("Creative brief", { exact: true })
     .fill(
@@ -205,7 +205,7 @@ test("Complete wizard: upload, prompt, four choices, people, objects, approval a
   await page.getByRole("button", { name: "Create 4 landscapes" }).click();
   await expect(page.getByText("0 of 4 ready", { exact: false })).toBeVisible();
   await page.reload();
-  await page.getByRole("tab", { name: "Create a new setting" }).click();
+  await page.getByRole("tab", { name: "Generate a setting" }).click();
   await ready(page);
   await evidence(page, "02-landscape-options");
   const requests = (await control(page)).records

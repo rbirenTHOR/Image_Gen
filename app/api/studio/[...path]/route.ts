@@ -1,3 +1,4 @@
+import { ensureNatureLibrary, imageObject } from "@/lib/server/nature-library";
 import {
   campaignData,
   saveCampaignImages,
@@ -95,6 +96,7 @@ async function handle(
     const method = request.method;
     if (resource === "bootstrap" && method === "POST") {
       await ensureSeeds();
+      await ensureNatureLibrary();
       if (
         !(await one("SELECT id FROM projects WHERE owner_id=? LIMIT 1", owner))
       )
@@ -142,7 +144,7 @@ async function handle(
       const download = new URL(request.url).searchParams.has("download");
       if (download && !a.approved)
         throw new ApiError(400, "Approve this image before exporting it.");
-      const object = await runtime().BUCKET.get(a.r2_key);
+      const object = await imageObject(a);
       if (!object)
         throw new ApiError(404, "The image file could not be found.");
       const headers: Record<string, string> = {

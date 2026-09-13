@@ -1,3 +1,4 @@
+import { imageObject } from "./nature-library";
 import { getAsset, assetDataURI } from "./library";
 import { runtime, ApiError } from "./runtime";
 import { providerFetch } from "./provider-fetch";
@@ -26,7 +27,7 @@ export async function modelImages(ids: string[], owner: string) {
   const images: string[] = [];
   for (const id of ids) {
     const asset = await getAsset(id, owner);
-    const object = await runtime().BUCKET.get(asset.r2_key);
+    const object = await imageObject(asset);
     if (!object) throw new ApiError(503, "A source image could not be loaded.");
     if (object.size <= 2 * 1024 * 1024) {
       await object.body.cancel();

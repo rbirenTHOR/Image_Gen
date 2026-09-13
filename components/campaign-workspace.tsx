@@ -22,6 +22,8 @@ import {
   Send,
   Copy,
 } from "lucide-react";
+import { OriginalPhoto } from "@/components/original-photo";
+import { PhotoSource } from "@/components/photo-source";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -77,7 +79,7 @@ function Photo({ asset }: { asset: Asset }) {
   return (
     <div className="campaign-photo">
       <img
-        src={asset.url + (revision ? "?preview=" + revision : "")}
+        src={(asset.thumbnail_url || asset.url) + (revision ? "?preview=" + revision : "")}
         alt={asset.name}
         loading="lazy"
         onLoad={() => setState("ready")}
@@ -226,7 +228,7 @@ export function CampaignHome({
                   <div className={"board-mosaic count-" + previews.length}>
                     {previews.length ? (
                       previews.map((a) => (
-                        <img key={a.id} src={a.url} alt={a.name} />
+                        <img key={a.id} src={a.thumbnail_url || a.url} alt={a.name} />
                       ))
                     ) : (
                       <div className="board-empty">
@@ -1072,7 +1074,7 @@ export default function CampaignWorkspace({
                               }
                             >
                               <img
-                                src={byId.get(id)!.url}
+                                src={byId.get(id)!.thumbnail_url || byId.get(id)!.url}
                                 alt={byId.get(id)!.name}
                               />
                               <span>{i === 0 ? "Base" : i + 1}</span>
@@ -1217,7 +1219,7 @@ export default function CampaignWorkspace({
                   const a = byId.get(id);
                   return a ? (
                     <div key={id}>
-                      <img src={a.url} alt={a.name} />
+                      <img src={a.thumbnail_url || a.url} alt={a.name} />
                       <span>
                         {i === 0 ? "Base image" : "Reference " + (i + 1)}
                       </span>
@@ -1359,7 +1361,7 @@ export default function CampaignWorkspace({
                     )
                   }
                 >
-                  <img src={a.url} alt={a.name} loading="lazy" />
+                  <img src={a.thumbnail_url || a.url} alt={a.name} loading="lazy" />
                   <span>{a.name}</span>
                   {picked.includes(a.id) && (
                     <b>
@@ -1406,6 +1408,7 @@ export default function CampaignWorkspace({
           </DialogHeader>
           {inspect && (
             <>
+              <PhotoSource asset={inspect} />
               <div className="inspector-toolbar">
                 <Button
                   variant="outline"
@@ -1458,11 +1461,7 @@ export default function CampaignWorkspace({
                 }
               >
                 <div>
-                  <img
-                    src={inspect.url}
-                    alt={inspect.name}
-                    className={actual ? "actual" : ""}
-                  />
+                  {inspect.photo_source ? <OriginalPhoto key={inspect.id} src={inspect.url} alt={inspect.name} className={actual ? "actual" : ""} /> : <img src={inspect.url} alt={inspect.name} className={actual ? "actual" : ""} />}
                 </div>
                 {compare && (
                   <div>
