@@ -53,6 +53,10 @@ import {
   type Project,
   type Batch,
 } from "@/lib/domain";
+import {
+  getCampaignPreset,
+  resolveCampaignPreset,
+} from "@/lib/campaign-presets";
 export const dynamic = "force-dynamic";
 async function state(owner: string) {
   const [assets, projects, memberships, modelPacks] = await Promise.all([
@@ -86,14 +90,30 @@ async function state(owner: string) {
     },
   };
 }
-async function createProject(owner: string, name: string) {
+async function createProject(owner: string, name: string, presetId = "") {
   const id = crypto.randomUUID(),
     now = Date.now();
+  const preset = getCampaignPreset(presetId);
+  const candidates = preset
+    ? await all<Asset>(
+        "SELECT * FROM assets WHERE owner_id=? OR owner_id=? ORDER BY created_at DESC",
+        owner,
+        "shared",
+      )
+    : [];
+  const resolved = preset
+    ? resolveCampaignPreset(preset, candidates)
+    : { rv: undefined, landscape: undefined };
+  const step = resolved.landscape ? "compose" : resolved.rv ? "landscape" : "rv";
   await run(
-    "INSERT INTO projects(id,owner_id,name,created_at,updated_at) VALUES(?,?,?,?,?)",
+    "INSERT INTO projects(id,owner_id,name,step,rv_id,landscape_id,preset_id,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?)",
     id,
     owner,
     name,
+    step,
+    resolved.rv?.id ?? null,
+    resolved.landscape?.id ?? null,
+    preset?.id ?? "",
     now,
     now,
   );
@@ -279,9 +299,15 @@ async function handle(
     }
     if (resource === "projects" && method === "POST" && !id) {
       const data = z
-        .object({ name: z.string().trim().min(1).max(100) })
+        .object({
+          name: z.string().trim().min(1).max(100),
+          preset_id: z.string().trim().max(100).optional(),
+        })
+        .strict()
         .parse(await request.json());
-      return json(await createProject(owner, data.name), 201);
+      if (data.preset_id && !getCampaignPreset(data.preset_id))
+        throw new ApiError(400, "Campaign preset not found.");
+      return json(await createProject(owner, data.name, data.preset_id), 201);
     }
     if (resource === "projects" && method === "PATCH" && !action) {
       const p = await getProject(id, owner);

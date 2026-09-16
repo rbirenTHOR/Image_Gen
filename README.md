@@ -10,6 +10,14 @@ Select several gallery pictures with their checkboxes to save them together or a
 
 Campaign chat uses Sunburst Max for all image operations, including people when requested. A reference-backed variation uses the fal edit endpoint; a new image uses text-to-image. Chat planning uses the existing OpenAI text connection. It never submits image generation automatically. Each generated image has its own source lineage and can be saved, inspected, approved and downloaded without changing the wizard's current take. The wizard remains available through Build a scene / Create.
 
+### Preconfigured campaign setups
+
+**Campaigns → New campaign** opens a setup chooser. A setup can preload the approved RV, the Jayco source photograph used as the visual reference, the aspect ratio, a production brief and an authored shot list. The Eagle setups use the official 2026 Eagle fifth-wheel exterior as the sole product identity. North Point, Centurion and Condor photographs supply the setting, light, palette, camera language, wardrobe, activity and restrained prop styling; any different RV in the reference is replaced rather than blended with the Eagle.
+
+The preconfigured sets generate two Max images to control provider cost. Product-only setups vary framing and copy space. Lifestyle setups use different photographic roles within the pair, such as a wide bicycle-arrival tableau followed by a closer fireside conversation. If automatic visual planning is unavailable, the setup's authored two-shot directions are retained so the pair does not collapse into duplicate placements.
+
+Private Dropbox originals remain outside Git. Import web-sized generation proxies into the private studio library and name them to match the setup recipe. The current Eagle lifestyle recipes recognize the approved North Point mountain camp, Centurion golden desert camp and Condor family-and-dogs desert camp references.
+
 ### Model packs
 
 A model pack turns approved library images for one RV model into a reusable fal reference set. Attach a pack in campaign chat to place the current scene or selected base first, followed by up to three supporting images. Reference order is deterministic: product identity comes before detail, interior and style images; a matching camera view wins within each role. Duplicate, unapproved and evaluation images are excluded. This keeps the existing four-image fal request contract and manual attachment flow intact.
@@ -44,7 +52,7 @@ Three AI landscape plates and a clearly labeled generic AI trailer sample are in
 
 - Landscapes and reusable objects: `openai/gpt-image-2.5/sunburst/text-to-image` through fal.
 - RV compositing and scene objects: `openai/gpt-image-2.5/sunburst/edit` through fal.
-- Every Sunburst request explicitly sets `quality: "max"`, `num_images: 1`, lossless PNG output, and native high-resolution dimensions: 3264×2448 (4:3), 3840×2160 (16:9), 2880×2880 (square), or 2448×3264 (portrait). Four independent requests are submitted concurrently. Higher resolution increases generation time and provider usage; existing files retain their original resolution.
+- Every Sunburst request explicitly sets `quality: "max"`, `num_images: 1`, lossless PNG output, and native high-resolution dimensions: 3264×2448 (4:3), 3840×2160 (16:9), 2880×2880 (square), or 2448×3264 (portrait). The selected take count is submitted as independent requests; preconfigured campaign setups use two. Higher resolution increases generation time and provider usage; existing files retain their original resolution.
 - References above 2 MB are streamed to fal with a 24-hour expiration preference before editing/chat, avoiding repeated base64 copies of large images in Worker memory. The private R2 original remains the master. Generated files are preserved without resizing or recompression.
 - People: `meta/muse-image/edit` through fal, using only the selected scene.
 - Optional prompt enhancement: OpenAI Responses API, `gpt-5.4-mini`, configurable with `PROMPT_MODEL`.

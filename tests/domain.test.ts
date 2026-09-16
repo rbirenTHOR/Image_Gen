@@ -1,6 +1,11 @@
 import { parseCompositionShots, placementPresets } from '../lib/composition-plan.ts';
 import {parseLandscape, commonsImageUrl, sourceText, landscapeQueries} from '../lib/landscape-discovery.ts';
 import { imageDimensions } from "../lib/image-metadata.ts";
+import {
+  campaignPresets,
+  getCampaignPreset,
+  resolveCampaignPreset,
+} from "../lib/campaign-presets.ts";
 import test from "node:test";
 import assert from "node:assert/strict";
 test('Natural landscape requests broaden without changing place words into source operators',()=>{
@@ -261,4 +266,53 @@ test("Uploaded image dimensions are read without decoding the full file", () => 
     width: 2048,
     height: 1366,
   });
+});
+
+test("Eagle campaign presets use two-shot sets and resolve approved references", () => {
+  const asset = (overrides: Record<string, unknown>) =>
+    ({
+      id: crypto.randomUUID(),
+      kind: "rv",
+      brand: "Jayco",
+      model: "Eagle Fifth Wheel",
+      year: "2026",
+      name: "Eagle",
+      ...overrides,
+    }) as never;
+  const rv = asset({});
+  const style = asset({
+    kind: "landscape",
+    brand: "",
+    model: "",
+    year: "",
+    name: "Jayco North Point lifestyle setup — wooded mountain field",
+  });
+  const presets = campaignPresets.filter((preset) => preset.id !== "blank");
+  assert.equal(presets.length, 7);
+  assert.ok(presets.every((preset) => preset.count === 2));
+  assert.equal(presets.filter((preset) => preset.mode === "lifestyle").length, 3);
+  assert.ok(
+    presets
+      .filter((preset) => preset.mode === "lifestyle")
+      .every((preset) => preset.fallbackShots?.length === 2),
+  );
+  assert.deepEqual(
+    new Set(presets.map((preset) => preset.aspect)),
+    new Set(["landscape_4_3", "landscape_16_9", "square_hd", "portrait_4_3"]),
+  );
+  const resolved = resolveCampaignPreset(
+    getCampaignPreset("jayco-eagle-north-point-wide")!,
+    [style, rv],
+  );
+  assert.equal(resolved.rv, rv);
+  assert.equal(resolved.landscape, style);
+  const lifestylePrompt = buildPrompt(
+    "compose",
+    "Two candid adults beside the Eagle.",
+    0,
+    "Use the foreground camp pad.",
+    true,
+  );
+  assert.match(lifestylePrompt, /approved Jayco lifestyle reference/);
+  assert.match(lifestylePrompt, /candid and anatomically realistic/);
 });

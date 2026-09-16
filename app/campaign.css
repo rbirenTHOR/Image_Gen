@@ -138,6 +138,27 @@
 .campaign-home-tools input {
   max-width: 270px;
 }
+
+.campaign-preset-summary {
+  display: grid;
+  gap: 7px;
+  padding: 15px 16px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--secondary);
+  font-size: 13px;
+}
+
+.campaign-preset-summary strong {
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.45;
+}
+
+.campaign-preset-summary span,
+.campaign-preset-summary small {
+  color: var(--muted-foreground);
+}
 .campaign-boards {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));

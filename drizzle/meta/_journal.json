@@ -36,6 +36,13 @@
       "when": 1789522747705,
       "tag": "0004_gigantic_chamber",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1789527731985,
+      "tag": "0005_clever_expediter",
+      "breakpoints": true
     }
   ]
 }

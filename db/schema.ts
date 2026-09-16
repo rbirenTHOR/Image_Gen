@@ -92,6 +92,7 @@ export const projects = sqliteTable(
     compositionId: text("composition_id"),
     currentId: text("current_id"),
     modelPackId: text("model_pack_id"),
+    presetId: text("preset_id").notNull().default(""),
     version: integer("version").notNull().default(0),
     galleryMigrated: integer("gallery_migrated").notNull().default(0),
     createdAt: integer("created_at").notNull(),
@@ -100,6 +101,7 @@ export const projects = sqliteTable(
   (t) => [
     index("projects_owner_updated").on(t.ownerId, t.updatedAt),
     index("projects_model_pack").on(t.modelPackId),
+    index("projects_preset").on(t.presetId),
   ],
 );
 export const batches = sqliteTable(

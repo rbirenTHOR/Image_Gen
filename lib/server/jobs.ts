@@ -3,6 +3,7 @@ import { all, one, run, runtime, ApiError } from "./runtime";
 import { getAsset, getProject } from "./library";
 import { planComposition } from "./composition-plan";
 import { modelImages } from "./model-images";
+import { getCampaignPreset } from "@/lib/campaign-presets";
 import {
   modelFor,
   buildPrompt,
@@ -178,7 +179,19 @@ export async function startBatch(raw: unknown, owner: string) {
       "The studio supports eight images at a time. Choose fewer images or let the current images finish.",
     );
   const images = await modelImages(inputs, owner);
-  const shots = data.stage === "compose" ? await planComposition(images, data.prompt, data.count) : null;
+  const campaignPreset = getCampaignPreset(p.preset_id);
+  const lifestyleCompose =
+    data.stage === "compose" && campaignPreset?.mode === "lifestyle";
+  const shots =
+    data.stage === "compose"
+      ? await planComposition(
+          images,
+          data.prompt,
+          data.count,
+          lifestyleCompose,
+          campaignPreset?.fallbackShots,
+        )
+      : null;
   const endpoint = modelFor(data.stage),
     now = Date.now();
   const statements = [
@@ -208,7 +221,7 @@ export async function startBatch(raw: unknown, owner: string) {
         .DB.prepare(
           "INSERT INTO jobs(id,batch_id,slot,status,created_at,updated_at,shot_label,generation_prompt) VALUES(?,?,?,?,?,?,?,?)",
         )
-        .bind(ids[slot], data.id, slot, "submitting", now, now, shots?.[slot].label ?? "", buildPrompt(data.stage, data.prompt, slot, shots?.[slot].direction)),
+        .bind(ids[slot], data.id, slot, "submitting", now, now, shots?.[slot].label ?? "", buildPrompt(data.stage, data.prompt, slot, shots?.[slot].direction, lifestyleCompose)),
     );
   try {
     await runtime().DB.batch(statements);

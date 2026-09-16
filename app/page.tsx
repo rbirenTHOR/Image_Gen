@@ -75,6 +75,10 @@ import {
   type GenerationStage,
   type ModelPack,
 } from "@/lib/domain";
+import {
+  campaignPresets,
+  getCampaignPreset,
+} from "@/lib/campaign-presets";
 const BASE = "/api/studio/";
 async function api<T>(
   path: string,
@@ -210,6 +214,9 @@ export default function Studio() {
     [briefOpen, setBriefOpen] = useState(false),
     [campaignDialog, setCampaignDialog] = useState(false),
     [campaignName, setCampaignName] = useState(""),
+    [campaignPresetId, setCampaignPresetId] = useState(
+      "jayco-eagle-north-point",
+    ),
     [saveAsset, setSaveAsset] = useState<Asset | null>(null),
     [saveName, setSaveName] = useState(""),
     [checks, setChecks] = useState({ rv: false, scene: false, crop: false }),
@@ -373,6 +380,17 @@ export default function Studio() {
     project?.current_id,
     project?.composition_id,
   ]);
+  useEffect(() => {
+    const preset = getCampaignPreset(project?.preset_id);
+    setBriefs(
+      preset?.composeBrief
+        ? { ...defaults, compose: preset.composeBrief }
+        : defaults,
+    );
+    setEnhanced({});
+    setAspect(preset?.aspect ?? "landscape_4_3");
+    setImageCount(preset?.count ?? 2);
+  }, [projectId, project?.preset_id]);
   useEffect(() => {
     if (!batches.some((b) => b.jobs.some((j) => activeStatus(j.status))))
       return;
@@ -550,10 +568,14 @@ export default function Studio() {
     }
   }
   async function createCampaign() {
-    if (!campaignName.trim()) return;
+    const preset = getCampaignPreset(campaignPresetId);
+    const name = campaignName.trim() || preset?.defaultName || "Untitled campaign";
     setBusy(true);
     try {
-      const p = await api<Project>("projects", { name: campaignName });
+      const p = await api<Project>("projects", {
+        name,
+        preset_id: campaignPresetId,
+      });
       setProjects((old) => [p, ...old]);
       setProjectId(p.id);
       setView("create");
@@ -1418,14 +1440,16 @@ export default function Studio() {
             setProjectId(id);
             navigate("campaign");
           }}
-          onNew={async () => {
+          onNew={async (presetId) => {
+            const preset = getCampaignPreset(presetId)!;
             try {
               const p = await api<Project>("projects", {
-                name: "Untitled campaign",
+                name: preset.defaultName,
+                preset_id: preset.id,
               });
               setProjects((old) => [p, ...old]);
               setProjectId(p.id);
-              navigate("campaign");
+              navigate("create");
             } catch (e) {
               fail(e);
             }
@@ -1551,7 +1575,9 @@ export default function Studio() {
               <button
                 className="new-campaign-link"
                 onClick={() => {
-                  setCampaignName("");
+                  const preset = getCampaignPreset("jayco-eagle-north-point")!;
+                  setCampaignPresetId(preset.id);
+                  setCampaignName(preset.defaultName);
                   setCampaignDialog(true);
                 }}
               >
@@ -2343,6 +2369,38 @@ export default function Studio() {
               Your existing campaigns and images stay saved.
             </DialogDescription>
           </DialogHeader>
+          <label className="field-label">
+            Campaign setup
+            <Select
+              value={campaignPresetId}
+              onValueChange={(value) => {
+                setCampaignPresetId(value);
+                setCampaignName(getCampaignPreset(value)?.defaultName ?? "");
+              }}
+            >
+              <SelectTrigger aria-label="Campaign setup">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {campaignPresets.map((preset) => (
+                  <SelectItem key={preset.id} value={preset.id}>
+                    {preset.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </label>
+          {getCampaignPreset(campaignPresetId) && (
+            <div className="campaign-preset-summary">
+              <strong>{getCampaignPreset(campaignPresetId)!.description}</strong>
+              <span>{getCampaignPreset(campaignPresetId)!.rvLabel}</span>
+              <span>{getCampaignPreset(campaignPresetId)!.styleLabel}</span>
+              <small>
+                {getCampaignPreset(campaignPresetId)!.count} takes ·{" "}
+                {generationSizeLabel(getCampaignPreset(campaignPresetId)!.aspect)} · prompt preloaded
+              </small>
+            </div>
+          )}
           <Input
             aria-label="Campaign name"
             placeholder="Autumn escapes"

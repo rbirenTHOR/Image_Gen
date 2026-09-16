@@ -47,6 +47,11 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "sonner";
 import { readCampaignDraft, writeCampaignDraft } from "@/lib/campaign-draft";
 import {
+  campaignPresets,
+  getCampaignPreset,
+  resolveCampaignPreset,
+} from "@/lib/campaign-presets";
+import {
   activeStatus,
   generationSizeLabel,
   realismRefinement,
@@ -174,10 +179,15 @@ export function CampaignHome({
   projects: Project[];
   assets: Asset[];
   onOpen: (id: string) => void;
-  onNew: () => void;
+  onNew: (presetId: string) => Promise<void>;
   onNav: (v: string) => void;
 }) {
   const [search, setSearch] = useState("");
+  const [newOpen, setNewOpen] = useState(false);
+  const [presetId, setPresetId] = useState("jayco-eagle-north-point");
+  const [creating, setCreating] = useState(false);
+  const preset = getCampaignPreset(presetId)!;
+  const resolved = resolveCampaignPreset(preset, assets);
   return (
     <div className="campaign-mode">
       <StudioHeader onNav={onNav} />
@@ -188,7 +198,7 @@ export function CampaignHome({
             <h1>Make room for the next idea.</h1>
             <p>Every image, every direction. Together in one campaign.</p>
           </div>
-          <Button onClick={onNew}>
+          <Button onClick={() => setNewOpen(true)}>
             <Plus />
             New campaign
           </Button>
@@ -268,6 +278,60 @@ export function CampaignHome({
           </div>
         )}
       </main>
+      <Dialog open={newOpen} onOpenChange={setNewOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Choose a campaign setup</DialogTitle>
+            <DialogDescription>
+              Start from an approved product and lifestyle recipe, or build one yourself.
+            </DialogDescription>
+          </DialogHeader>
+          <Select value={presetId} onValueChange={setPresetId}>
+            <SelectTrigger aria-label="Campaign setup">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {campaignPresets.map((item) => (
+                <SelectItem key={item.id} value={item.id}>
+                  {item.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <div className="campaign-preset-summary">
+            <strong>{preset.description}</strong>
+            <span>{preset.rvLabel}</span>
+            <span>{preset.styleLabel}</span>
+            {preset.id === "blank" ? (
+              <small>RV and setting will be chosen in the wizard.</small>
+            ) : (
+              <>
+              <small>{preset.count} takes · {generationSizeLabel(preset.aspect)}</small>
+              <small>
+                {resolved.rv && resolved.landscape
+                  ? "Ready · product and Dropbox style reference found"
+                  : `Setup needed · ${!resolved.rv ? "Eagle RV reference" : ""}${!resolved.rv && !resolved.landscape ? " and " : ""}${!resolved.landscape ? preset.styleLabel : ""} missing`}
+              </small>
+              </>
+            )}
+          </div>
+          <Button
+            disabled={creating}
+            onClick={async () => {
+              setCreating(true);
+              try {
+                await onNew(presetId);
+                setNewOpen(false);
+              } finally {
+                setCreating(false);
+              }
+            }}
+          >
+            {creating ? <LoaderCircle className="spinner" /> : <Plus />}
+            Start campaign
+          </Button>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

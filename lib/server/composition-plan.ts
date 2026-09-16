@@ -5,10 +5,19 @@ import { providerFetch } from './provider-fetch';
 
 /** Analyze both references once; the requested shot prompts are persisted before
  * parallel image submission so retries never re-plan or change a chosen shot. */
-export async function planComposition(images: string[], brief: string, count = 2) {
+export async function planComposition(
+  images: string[],
+  brief: string,
+  count = 2,
+  allowLifestyle = false,
+  fallbackShots = placementPresets.slice(0, count),
+) {
   const e = runtime();
   const key = e.OPENAI_API_KEY || process.env.OPENAI_API_KEY;
-  if (!key) return placementPresets.slice(0,count);
+  const fallback = fallbackShots.length === count
+    ? fallbackShots
+    : placementPresets.slice(0, count);
+  if (!key) return fallback;
   for (let attempt=0; attempt<2; attempt++) {
   let providerRequestId: string | null = null;
   try {
@@ -23,7 +32,7 @@ export async function planComposition(images: string[], brief: string, count = 2
 ${placementGeometryBrief}
 Assess the real RV silhouette, body proportions, visible side and camera elevation. Assess the backdrop ground plane, camera height, horizon or vanishing direction, obstacles, light and usable ground. Do not treat the outline of a distant mountain as the ground-plane horizon. Do not invent camera measurements or real-world vehicle dimensions. If there is clearly no ground capable of supporting this RV, or the viewpoints cannot be reconciled without distorting the vehicle or rebuilding the scene, return feasible=false, a short reason recommending a better backdrop or matching RV view, and an empty shots array. Uncertainty alone is not proof of incompatibility.
 For a feasible scene, return feasible=true, reason="", and exactly ${count} shots. Choose the best natural fit first, then restrained alternatives supported by the same scene. There are no mandatory left/right positions or fixed screen-width targets. Never vary size independently from depth or force variety when the user fixes position. A distant request stays distant in every shot. If only one ground patch is feasible, stay on that patch and use small plausible changes rather than manufacturing a different placement.
-Each self-contained direction must specify: a named visible ground patch; tire-contact position as approximate percent from left/top of the original backdrop; the projected vehicle width derived from depth and observed scale cues; preservation of the RV body length-to-height ratio and source angle; matched horizon/camera elevation, occlusion and shadows. Explain the visual evidence for the chosen scale in one short sentence. Percentages are approximate, not independent constraints; physical plausibility wins. State what to preserve. Keep the backdrop camera, terrain, vegetation, sky and texture, with only local footprint, reflections, occlusion and shadow edits. No mirroring, unsupported unseen sides, people, new props, new roads, global restyling, collage or split screen. Return concise labels and 100–170 words per shot.`,
+Each self-contained direction must specify: a named visible ground patch; tire-contact position as approximate percent from left/top of the original backdrop; the projected vehicle width derived from depth and observed scale cues; preservation of the RV body length-to-height ratio and source angle; matched horizon/camera elevation, occlusion and shadows. Explain the visual evidence for the chosen scale in one short sentence. Percentages are approximate, not independent constraints; physical plausibility wins. State what to preserve. Keep the backdrop camera, terrain, vegetation, sky and texture, with only local footprint, reflections, occlusion and shadow edits. No mirroring, unsupported unseen sides, new roads, global restyling, collage or split screen. ${allowLifestyle ? "This is a lifestyle campaign: plan the distinct cast, activity, wardrobe and restrained props requested in the brief, borrowing their candid visual language from image 2 while keeping image 1 as the sole RV identity." : "Do not add people or props."} Return concise labels and 100–170 words per shot.`,
         input: [{ role: 'user', content: [
           { type: 'input_text', text: 'CREATIVE DIRECTION\n' + brief },
           ...images.slice(0, 2).map(image_url => ({ type: 'input_image', image_url, detail: 'high' })),
@@ -59,5 +68,5 @@ Each self-contained direction must specify: a named visible ground patch; tire-c
     if (reason === 'request_interrupted' || /^provider_http_4/.test(reason)) break;
   }
   }
-  return placementPresets.slice(0,count);
+  return fallback;
 }

@@ -77,6 +77,7 @@ export interface Project {
   composition_id: string | null;
   current_id: string | null;
   model_pack_id: string | null;
+  preset_id: string;
   updated_at: number;
   version: number;
 }
@@ -222,7 +223,11 @@ export function buildPrompt(
   brief: string,
   slot: number,
   placement?: string,
+  allowLifestyle = false,
 ) {
+  const composeInstruction = allowLifestyle
+    ? "Image 1 is the exact RV identity reference; image 2 is an approved Jayco lifestyle reference that may contain a different RV. Replace the RV in image 2 completely with the RV from image 1 while preserving image 1's body geometry, graphics, badges, lettering, windows, doors, wheels, accessories and color. Transfer only the requested setting, light, color response, camera language, people, wardrobe, activity and prop styling from image 2. Follow the creative direction for the exact cast, activity and shot role. Match perspective, scale, occlusion, reflections and ground contact. Keep people candid and anatomically realistic, with believable interaction, fabric and shadows. Do not retain, hybridize or duplicate the RV from image 2."
+    : "Image 1 is the source RV; image 2 is the selected landscape. Place that exact RV into that landscape, matching camera perspective, scale, light and ground contact. Preserve the RV body geometry, graphics, badges, lettering, windows, doors, wheels, accessories and color as accurately as possible. Update reflections in glass and glossy body panels to match the selected landscape and its sky; retain the physical window shapes, tint and decals instead of copying reflections from the RV's original setting. Treat image 2 as the background plate to preserve, not inspiration for a new landscape. Keep its horizon, terrain, vegetation, sky and photographic texture; change only the vehicle footprint, necessary occlusion and local contact shadows. No people or added props. Additional images, if present, are supporting RV reference views.";
   const instructions: Record<GenerationStage, string> = {
     campaign:
       "Create a new commercial campaign image from the creative direction. Include only subjects requested by the user. Do not invent brand lettering or product specifications.",
@@ -230,8 +235,7 @@ export function buildPrompt(
       "Edit image 1 according to the creative direction. Further images, if present, are supporting references in their supplied order, not separate images to edit. Preserve the identity and geometry of any RV, its graphics, windows, doors, wheels and accessories. Change only the requested elements. Use image 1 as the base scene; do not combine unrelated supporting subjects unless requested. Match light, scale, perspective and ground contact. Preserve untouched landscape detail and avoid cumulative smoothing or restyling across edits.",
     landscape:
       "Create a clean reusable landscape plate. Provide generous relatively level foreground for a large RV. No RVs, vehicles, people, animals, buildings, camping equipment, signs, typography or other man-made objects. Geography and vegetation must be plausible for the described place. Photograph a plausible real location at standing eye level with a normal 35mm perspective and moderate landscape depth of field, approximately f/8. Leave usable ground without turning it into a perfectly smooth or staged platform.",
-    compose:
-      "Image 1 is the source RV; image 2 is the selected landscape. Place that exact RV into that landscape, matching camera perspective, scale, light and ground contact. Preserve the RV body geometry, graphics, badges, lettering, windows, doors, wheels, accessories and color as accurately as possible. Update reflections in glass and glossy body panels to match the selected landscape and its sky; retain the physical window shapes, tint and decals instead of copying reflections from the RV's original setting. Treat image 2 as the background plate to preserve, not inspiration for a new landscape. Keep its horizon, terrain, vegetation, sky and photographic texture; change only the vehicle footprint, necessary occlusion and local contact shadows. No people or added props. Additional images, if present, are supporting RV reference views.",
+    compose: composeInstruction,
     people:
       "Edit only the requested people into image 1. Preserve the RV, its graphics, landscape, camera viewpoint and composition. Match scale, ambient light, sun direction and shadows. Natural skin texture, realistic hair, candid posture, clothing with believable wrinkles. Preserve background texture outside the added people and their immediate shadows. No waxy skin or exaggerated smiles.",
     objects:
