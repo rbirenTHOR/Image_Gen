@@ -9,6 +9,7 @@ import {
   approveCampaignImage,
 } from "@/lib/server/campaigns";
 import { providerFetch } from "@/lib/server/provider-fetch";
+import { imageDimensions } from "@/lib/image-metadata";
 import { z } from "zod";
 import {
   authorize,
@@ -228,13 +229,14 @@ async function handle(
         mime = detectImage(bytes);
       if (!mime)
         throw new ApiError(400, "Upload a valid JPG, PNG or WebP image.");
+      const dimensions = imageDimensions(bytes, mime);
       const assetId = crypto.randomUUID(),
         key = "uploads/" + assetId;
       await runtime().BUCKET.put(key, bytes, {
         httpMetadata: { contentType: mime },
       });
       await run(
-        "INSERT INTO assets(id,owner_id,kind,name,brand,model,year,angle,environment,lighting,source,r2_key,mime,in_library,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        "INSERT INTO assets(id,owner_id,kind,name,brand,model,year,angle,environment,lighting,source,r2_key,mime,width,height,in_library,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
         assetId,
         owner,
         data.kind,
@@ -248,6 +250,8 @@ async function handle(
         "uploaded",
         key,
         mime,
+        dimensions.width,
+        dimensions.height,
         1,
         Date.now(),
       );

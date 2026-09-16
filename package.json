@@ -16,7 +16,8 @@
     "test:unit": "node --experimental-strip-types --test tests/domain.test.ts",
     "test:e2e": "playwright test",
     "test:e2e:headed": "playwright test --headed",
-    "test:report": "playwright show-report output/playwright/journey-report"
+    "test:report": "playwright show-report output/playwright/journey-report",
+    "import:model-pack": "node scripts/import-model-pack.mjs"
   },
   "dependencies": {
     "@base-ui/react": "^1.7.0",

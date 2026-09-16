@@ -18,6 +18,16 @@ When two or more references are attached, **Save as model pack** stores them for
 
 For a large source library, preserve original photographs as the archive and import web-sized generation proxies into the studio. Assign exterior identity views, interior rooms and detail shots explicitly; keep near-duplicates and low-quality frames out of generation. Start with these reference packs and measure product fidelity on held-out images before considering a Jayco-wide style LoRA. A model-specific tune should follow only if repeated reference-driven campaigns still fail on the same identity details.
 
+The bulk importer reads an ignored local manifest, uploads only the selected JPG/PNG/WebP files to the private studio bucket, creates or updates the model pack, saves generation-approved images to its pilot campaign, and leaves evaluation images out of the campaign gallery. Re-running the same manifest reuses matching assets and updates the pack instead of duplicating it:
+
+```sh
+npm run import:model-pack -- \
+  --base-url http://localhost:3000 \
+  --manifest work/model-packs/example/manifest.json
+```
+
+Keep manifests that contain private source paths under `work/`; that directory and the photographs are ignored by Git. A manifest defines pack metadata, `source_dir`, an optional `campaign_name`, and an `assets` array with `file`, `name`, `role`, `view`, `room`, `priority`, `environment`, `lighting`, and `approved_for_generation`. Local imports use the development sign-in automatically. For another authenticated environment, supply its session cookie through `STUDIO_COOKIE` rather than committing credentials.
+
 The Add images dialog supports multi-select library imports and up to ten uploads at once. Removing an image from the gallery removes only its membership; its original file, history and other campaign memberships remain intact. Approval is separate from saving. Campaign upload originals and generated masters are preserved.
 
 ## Workflow

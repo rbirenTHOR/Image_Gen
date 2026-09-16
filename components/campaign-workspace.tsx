@@ -1340,6 +1340,17 @@ export default function CampaignWorkspace({
                     Save as model pack
                   </Button>
                 )}
+                {project.model_pack_id && (
+                  <Button
+                    className="model-pack-save"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => applyModelPack(project.model_pack_id!)}
+                  >
+                    <ImagePlus />
+                    Use pack references
+                  </Button>
+                )}
               </div>
             )}
             {refs.length > 0 && (

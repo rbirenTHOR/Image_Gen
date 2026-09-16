@@ -1,5 +1,6 @@
 import { parseCompositionShots, placementPresets } from '../lib/composition-plan.ts';
 import {parseLandscape, commonsImageUrl, sourceText, landscapeQueries} from '../lib/landscape-discovery.ts';
+import { imageDimensions } from "../lib/image-metadata.ts";
 import test from "node:test";
 import assert from "node:assert/strict";
 test('Natural landscape requests broaden without changing place words into source operators',()=>{
@@ -243,4 +244,21 @@ test("A model pack supplies its own base and removes duplicate assignments", () 
   assert.deepEqual(selectModelPackReferences([base, { ...base, id: "two" }]), [
     "rv-front",
   ]);
+});
+
+test("Uploaded image dimensions are read without decoding the full file", () => {
+  const jpeg = Uint8Array.from([
+    0xff, 0xd8, 0xff, 0xe0, 0x00, 0x04, 0, 0, 0xff, 0xc0, 0x00, 0x0b,
+    0x08, 0x05, 0x56, 0x08, 0x00, 0x03, 1, 0x11, 0,
+  ]);
+  assert.deepEqual(imageDimensions(jpeg, "image/jpeg"), {
+    width: 2048,
+    height: 1366,
+  });
+  const png = new Uint8Array(24);
+  png.set([0, 0, 8, 0, 0, 0, 5, 86], 16);
+  assert.deepEqual(imageDimensions(png, "image/png"), {
+    width: 2048,
+    height: 1366,
+  });
 });
