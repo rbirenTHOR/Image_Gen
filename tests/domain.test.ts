@@ -330,6 +330,7 @@ test('Photoshoot selection preserves order, mixed native formats and a two-shot 
   assert.match(prompt, /Intentionally crop the RV/);
   assert.match(prompt, /Keep the door closed if the RV identity photo shows it closed/);
   assert.match(prompt, /never relocate, resize or reorder/);
+  assert.match(prompt, /complete cast and pets do not need to appear in every image/);
   assert.ok(!prompt.includes('Keep the backdrop camera and horizon fixed'));
   assert.ok(!prompt.includes('No people or added props'));
   assert.deepEqual(providerInput('compose', prompt, shots[0].aspect, ['rv', 'style']).image_size,
