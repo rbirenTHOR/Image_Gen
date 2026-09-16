@@ -159,6 +159,8 @@ export function selectModelPackReferences(
   return ids;
 }
 export interface Job {
+  shot_id?: string;
+  output_aspect?: string;
   shot_label?: string;
   generation_prompt?: string;
   id: string;
@@ -203,6 +205,7 @@ export const requestSchema = z.object({
   aspect: z
     .enum(["landscape_4_3", "landscape_16_9", "square_hd", "portrait_4_3"])
     .default("landscape_4_3"),
+  shot_ids: z.array(z.string().min(1).max(50)).min(1).max(2).optional(),
   reference_id: z.string().max(100).optional(),
   reference_ids: z.array(z.string().min(1).max(100)).max(4).optional(),
 });
@@ -224,7 +227,11 @@ export function buildPrompt(
   slot: number,
   placement?: string,
   allowLifestyle = false,
+  photoshoot = false,
 ) {
+  const geometry = photoshoot
+    ? "Preserve the exact RV body proportions, livery, logos, visible windows, doors and hardware. Keep every visible tire and support grounded with coherent perspective and shadows. Door, window and compartment positions are fixed relative to the axles and front cap; never move them for framing. Preserve the door open/closed state from the RV reference and do not reveal an unsupported interior. The approved source supports its shown exterior side only. For a close lifestyle photograph, intentionally frame a partial RV rather than compressing its entire length into a narrow image. Reframe the camera to the assigned shot while keeping the same real location and palette. Never mirror lettering, fabricate an unseen interior, stretch the RV or blend it with the source-shoot vehicle."
+    : placementGeometryBrief;
   const composeInstruction = allowLifestyle
     ? "Image 1 is the exact RV identity reference; image 2 is an approved Jayco lifestyle reference that may contain a different RV. Replace the RV in image 2 completely with the RV from image 1 while preserving image 1's body geometry, graphics, badges, lettering, windows, doors, wheels, accessories and color. Transfer only the requested setting, light, color response, camera language, people, wardrobe, activity and prop styling from image 2. Follow the creative direction for the exact cast, activity and shot role. Match perspective, scale, occlusion, reflections and ground contact. Keep people candid and anatomically realistic, with believable interaction, fabric and shadows. Do not retain, hybridize or duplicate the RV from image 2."
     : "Image 1 is the source RV; image 2 is the selected landscape. Place that exact RV into that landscape, matching camera perspective, scale, light and ground contact. Preserve the RV body geometry, graphics, badges, lettering, windows, doors, wheels, accessories and color as accurately as possible. Update reflections in glass and glossy body panels to match the selected landscape and its sky; retain the physical window shapes, tint and decals instead of copying reflections from the RV's original setting. Treat image 2 as the background plate to preserve, not inspiration for a new landscape. Keep its horizon, terrain, vegetation, sky and photographic texture; change only the vehicle footprint, necessary occlusion and local contact shadows. No people or added props. Additional images, if present, are supporting RV reference views.";
@@ -266,7 +273,7 @@ export function buildPrompt(
     stage === "landscape" || stage === "campaign"
       ? `\n\nENVIRONMENT\n${environmentBrief}`
       : "";
-  return `${instructions[stage]}${stage === "compose" ? "\n\nPLACEMENT GEOMETRY\n" + placementGeometryBrief : ""}\n\nCREATIVE DIRECTION\n${brief}\n\nPHOTOGRAPHIC STANDARD\n${photographicBrief}${environment}\n\nVARIATION ${slot + 1}\n${stage === "compose" && placement ? placement : variations[slot]}${stage === "compose" ? "\nPlacement must obey explicit user constraints and visible terrain. Do not force a vehicle onto water, steep slopes or vegetation. Keep the backdrop camera and horizon fixed; create variation through vehicle position, distance and modest supported orientation. Do not mirror lettering or invent unseen vehicle details. Produce one photograph, never a collage." : ""}`;
+  return `${instructions[stage]}${stage === "compose" ? "\n\nPLACEMENT GEOMETRY\n" + geometry : ""}\n\nCREATIVE DIRECTION\n${brief}\n\nPHOTOGRAPHIC STANDARD\n${photographicBrief}${environment}\n\nVARIATION ${slot + 1}\n${stage === "compose" && placement ? placement : variations[slot]}${stage === "compose" && !photoshoot ? "\nPlacement must obey explicit user constraints and visible terrain. Do not force a vehicle onto water, steep slopes or vegetation. Keep the backdrop camera and horizon fixed; create variation through vehicle position, distance and modest supported orientation. Do not mirror lettering or invent unseen vehicle details. Produce one photograph, never a collage." : ""}`;
 }
 export function providerInput(
   stage: GenerationStage,

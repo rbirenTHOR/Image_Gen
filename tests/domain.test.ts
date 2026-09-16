@@ -316,3 +316,22 @@ test("Eagle campaign presets use two-shot sets and resolve approved references",
   assert.match(lifestylePrompt, /approved Jayco lifestyle reference/);
   assert.match(lifestylePrompt, /candid and anatomically realistic/);
 });
+
+test('Photoshoot selection preserves order, mixed native formats and a two-shot limit', async () => {
+  const { resolvePhotoshootShots, photoshootPrompt, nextPhotoshootIds } = await import('../lib/photoshoot.ts');
+  const shots = resolvePhotoshootShots(['portrait', 'establishing']);
+  assert.deepEqual(shots.map(s => s.aspect), ['portrait_4_3', 'landscape_16_9']);
+  for (const ids of [[], ['portrait', 'portrait'], ['missing'], ['portrait', 'detail', 'action']])
+    assert.throws(() => resolvePhotoshootShots(ids));
+  const prompt = buildPrompt('compose', 'Use the reference cast and palette.', 0,
+    photoshootPrompt(shots[0], 'Use the reference cast and palette.'), true, true);
+  assert.match(prompt, /Intentionally crop the RV/);
+  assert.match(prompt, /Keep the door closed if the RV identity photo shows it closed/);
+  assert.match(prompt, /never relocate, resize or reorder/);
+  assert.ok(!prompt.includes('Keep the backdrop camera and horizon fixed'));
+  assert.ok(!prompt.includes('No people or added props'));
+  assert.deepEqual(providerInput('compose', prompt, shots[0].aspect, ['rv', 'style']).image_size,
+    {width:2448,height:3264});
+  const history = [{stage:'compose', jobs:[{status:'ready',shot_id:'establishing'}, {status:'failed',shot_id:'portrait'}, {status:'ready',shot_id:''}]}] as never;
+  assert.deepEqual(nextPhotoshootIds(history), ['portrait','detail']);
+});

@@ -306,7 +306,7 @@ export function CampaignHome({
               <small>RV and setting will be chosen in the wizard.</small>
             ) : (
               <>
-              <small>{preset.count} takes · {generationSizeLabel(preset.aspect)}</small>
+              <small>{preset.mode === "lifestyle" ? "6 shot roles · 2 per pass · wide, portrait, square & editorial" : `${preset.count} takes · ${generationSizeLabel(preset.aspect)}`}</small>
               <small>
                 {resolved.rv && resolved.landscape
                   ? "Ready · product and Dropbox style reference found"
@@ -344,6 +344,7 @@ export default function CampaignWorkspace({
   onRefresh,
   onBatch,
   onWizard,
+  onPhotoshoot,
 }: {
   project: Project;
   assets: Asset[];
@@ -353,6 +354,7 @@ export default function CampaignWorkspace({
   onRefresh: () => Promise<unknown>;
   onBatch: (b: Batch) => void;
   onWizard: () => void;
+  onPhotoshoot: () => void;
 }) {
   const [data, setData] = useState<CampaignData>({ saved_ids: [], turns: [] }),
     [loading, setLoading] = useState(true),
@@ -825,6 +827,7 @@ export default function CampaignWorkspace({
   return (
     <div className="campaign-mode">
       <StudioHeader onNav={onNav}>
+        <Button onClick={onPhotoshoot}>Plan photoshoot</Button>
         <Button variant="outline" onClick={onWizard}>
           <SlidersHorizontal />
           Build a scene
@@ -1048,7 +1051,7 @@ export default function CampaignWorkspace({
                     }
                     key={a.id}
                   >
-                    <div className="campaign-image-visual">
+                    <div className="campaign-image-visual" style={a.width && a.height ? {aspectRatio: `${a.width} / ${a.height}`} : undefined}>
                       <Photo asset={a} />
                       <button
                         className="image-open-target"
@@ -1106,6 +1109,7 @@ export default function CampaignWorkspace({
                               : a.quality === "max"
                                 ? "2.5 Max"
                                 : a.kind}
+                        {a.width > 0 && a.height > 0 ? ` · ${a.width} × ${a.height}` : ""}
                       </span>
                     </div>
                   </article>

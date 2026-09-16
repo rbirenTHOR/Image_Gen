@@ -3,6 +3,7 @@ import { all, one, run, runtime, ApiError } from "./runtime";
 import { getAsset, getProject } from "./library";
 import { planComposition } from "./composition-plan";
 import { modelImages } from "./model-images";
+import { resolvePhotoshootShots, photoshootPrompt } from "@/lib/photoshoot";
 import { getCampaignPreset } from "@/lib/campaign-presets";
 import {
   modelFor,
@@ -11,8 +12,6 @@ import {
   requestSchema,
   type Batch,
   type Job,
-  type GenerationStage,
-  type Asset,
 } from "@/lib/domain";
 type StoredJob = Job & {
   status_url: string | null;
@@ -53,7 +52,7 @@ export async function batchView(id: string, owner: string) {
   );
   if (!b) throw new ApiError(404, "Generation batch not found.");
   const jobs = await all<Job>(
-    "SELECT id,batch_id,slot,status,result_asset_id,error,created_at,updated_at,request_id,elapsed_ms,shot_label,generation_prompt FROM jobs WHERE batch_id=? ORDER BY slot",
+    "SELECT id,batch_id,slot,status,result_asset_id,error,created_at,updated_at,request_id,elapsed_ms,shot_label,generation_prompt,shot_id,output_aspect FROM jobs WHERE batch_id=? ORDER BY slot",
     id,
   );
   return { ...b, jobs };
@@ -66,7 +65,7 @@ async function submitJob(job: StoredJob, b: StoredBatch, images: string[]) {
         providerInput(
           b.stage,
           job.generation_prompt || buildPrompt(b.stage, b.prompt, job.slot),
-          b.aspect,
+          job.output_aspect || b.aspect,
           images,
         ),
       ),
@@ -117,6 +116,13 @@ async function submitJob(job: StoredJob, b: StoredBatch, images: string[]) {
 }
 export async function startBatch(raw: unknown, owner: string) {
   const data = requestSchema.parse(raw);
+  let shootShots;
+  if (data.shot_ids) {
+    if (data.stage !== "compose" || data.shot_ids.length !== data.count)
+      throw new ApiError(400, "Photoshoot shots must match the composition image count.");
+    try { shootShots = resolvePhotoshootShots(data.shot_ids); }
+    catch (error) { throw new ApiError(400, (error as Error).message); }
+  }
   if (!(runtime().FAL_KEY || process.env.FAL_KEY))
     throw new ApiError(503, "Image generation has not been connected.");
   const exists = await one<StoredBatch>(
@@ -126,12 +132,15 @@ export async function startBatch(raw: unknown, owner: string) {
   if (exists) {
     if (exists.owner_id !== owner)
       throw new ApiError(409, "This request identifier is already in use.");
+    const existingJobs = (await batchView(data.id, owner)).jobs;
     if (
       exists.project_id !== data.project_id ||
       exists.stage !== data.stage ||
       exists.prompt !== data.prompt ||
       exists.aspect !== data.aspect ||
-      (await batchView(data.id, owner)).jobs.length !== data.count ||
+      existingJobs.length !== data.count ||
+      JSON.stringify(existingJobs.map(j => j.shot_id || "")) !==
+        JSON.stringify(shootShots?.map(s => s.id) ?? Array(data.count).fill("")) ||
       (data.stage === "variation" &&
         exists.inputs_json !==
           JSON.stringify([...new Set(data.reference_ids ?? [])]))
@@ -181,7 +190,7 @@ export async function startBatch(raw: unknown, owner: string) {
   const images = await modelImages(inputs, owner);
   const campaignPreset = getCampaignPreset(p.preset_id);
   const lifestyleCompose =
-    data.stage === "compose" && campaignPreset?.mode === "lifestyle";
+    data.stage === "compose" && (!!shootShots || campaignPreset?.mode === "lifestyle");
   const shots =
     data.stage === "compose"
       ? await planComposition(
@@ -189,7 +198,8 @@ export async function startBatch(raw: unknown, owner: string) {
           data.prompt,
           data.count,
           lifestyleCompose,
-          campaignPreset?.fallbackShots,
+          shootShots ?? campaignPreset?.fallbackShots,
+          !!shootShots,
         )
       : null;
   const endpoint = modelFor(data.stage),
@@ -219,9 +229,14 @@ export async function startBatch(raw: unknown, owner: string) {
     statements.push(
       runtime()
         .DB.prepare(
-          "INSERT INTO jobs(id,batch_id,slot,status,created_at,updated_at,shot_label,generation_prompt) VALUES(?,?,?,?,?,?,?,?)",
+          "INSERT INTO jobs(id,batch_id,slot,status,created_at,updated_at,shot_label,generation_prompt,shot_id,output_aspect) VALUES(?,?,?,?,?,?,?,?,?,?)",
         )
-        .bind(ids[slot], data.id, slot, "submitting", now, now, shots?.[slot].label ?? "", buildPrompt(data.stage, data.prompt, slot, shots?.[slot].direction, lifestyleCompose)),
+        .bind(ids[slot], data.id, slot, "submitting", now, now,
+          shootShots?.[slot].label ?? shots?.[slot].label ?? "",
+          buildPrompt(data.stage, data.prompt, slot,
+            shootShots ? photoshootPrompt(shootShots[slot], data.prompt, shots?.[slot].direction) : shots?.[slot].direction,
+            lifestyleCompose, !!shootShots),
+          shootShots?.[slot].id ?? "", shootShots?.[slot].aspect ?? data.aspect),
     );
   try {
     await runtime().DB.batch(statements);
@@ -393,7 +408,7 @@ async function saveImage(
             ? "campaign"
             : "lifestyle";
   const inputs = JSON.parse(b.inputs_json) as string[];
-  const name =
+  const name = job.shot_id && job.shot_label ? job.shot_label :
     (b.stage === "landscape"
       ? "Landscape"
       : b.stage === "compose"

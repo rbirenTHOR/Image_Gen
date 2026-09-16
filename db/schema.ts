@@ -142,6 +142,8 @@ export const jobs = sqliteTable(
     leaseUntil: integer("lease_until").notNull().default(0),
     elapsedMs: integer("elapsed_ms"),
     attempts: integer("attempts").notNull().default(1),
+    shotId: text("shot_id").notNull().default(""),
+    outputAspect: text("output_aspect").notNull().default(""),
     shotLabel: text("shot_label").notNull().default(""),
     generationPrompt: text("generation_prompt").notNull().default(""),
   },

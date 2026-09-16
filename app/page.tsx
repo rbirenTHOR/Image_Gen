@@ -79,6 +79,7 @@ import {
   campaignPresets,
   getCampaignPreset,
 } from "@/lib/campaign-presets";
+import { photoshootShots, defaultPhotoshootIds, nextPhotoshootIds, photoshootContinuity } from "@/lib/photoshoot";
 const BASE = "/api/studio/";
 async function api<T>(
   path: string,
@@ -230,6 +231,8 @@ export default function Studio() {
       {},
     ),
     [previewLoaded, setPreviewLoaded] = useState<Record<string, boolean>>({});
+  const [shootMode, setShootMode] = useState(false);
+  const [shotIds, setShotIds] = useState<string[]>(defaultPhotoshootIds);
   const stateRef = useRef({ assets, projects, projectId });
   stateRef.current = { assets, projects, projectId };
   const project = projects.find((p) => p.id === projectId),
@@ -249,6 +252,11 @@ export default function Studio() {
         : stage === "compose"
           ? "compose"
           : generation;
+  const isPhotoshoot = genStage === "compose" && shootMode;
+  const chosenShots = shotIds.map(id => photoshootShots.find(s => s.id === id)!);
+  const outputCount = isPhotoshoot ? chosenShots.length : imageCount;
+  const completedShotIds = new Set(batches.filter(b => b.stage === "compose").flatMap(b => b.jobs.filter(j => j.status === "ready" && j.shot_id).map(j => j.shot_id)));
+  const nextShotIds = nextPhotoshootIds(batches);
   const latest = batches.find((b) => b.stage === genStage),
     activeCount = batches
       .flatMap((b) => b.jobs)
@@ -384,9 +392,11 @@ export default function Studio() {
     const preset = getCampaignPreset(project?.preset_id);
     setBriefs(
       preset?.composeBrief
-        ? { ...defaults, compose: preset.composeBrief }
+        ? { ...defaults, compose: preset.mode === "lifestyle" ? preset.composeBrief.split("Create two clearly different shots:")[0].trim() : preset.composeBrief }
         : defaults,
     );
+    setShootMode(preset?.mode === "lifestyle");
+    setShotIds(defaultPhotoshootIds);
     setEnhanced({});
     setAspect(preset?.aspect ?? "landscape_4_3");
     setImageCount(preset?.count ?? 2);
@@ -492,7 +502,7 @@ export default function Studio() {
     }
   }
   async function generate() {
-    if (!project) return;
+    if (!project || outputCount < 1) return;
     const id = crypto.randomUUID();
     const prompt =
       (enhanced[genStage] || briefs[genStage]) +
@@ -505,7 +515,8 @@ export default function Studio() {
       stage: genStage,
       prompt,
       aspect,
-      count: imageCount,
+      count: outputCount,
+      ...(isPhotoshoot ? { shot_ids: shotIds } : {}),
       ...(reference !== "none" && genStage === "objects"
         ? { reference_id: reference }
         : {}),
@@ -525,8 +536,9 @@ export default function Studio() {
       quality: genStage === "people" ? "native" : "max",
       created_at: Date.now(),
       inputs_json: "[]",
-      jobs: Array.from({length:imageCount}, (_,slot) => ({
+      jobs: Array.from({length:outputCount}, (_,slot) => ({
         id: id + "-" + slot,
+        ...(isPhotoshoot ? { shot_id: chosenShots[slot].id, shot_label: chosenShots[slot].label, output_aspect: chosenShots[slot].aspect } : {}),
         batch_id: id,
         slot,
         status: "submitting",
@@ -945,7 +957,7 @@ export default function Studio() {
                 ? "Your new landscapes"
                 : b.stage === "prop"
                   ? "Your new objects"
-                  : "Choose your favorite take"}
+                  : b.jobs.some(j => j.shot_id) ? "Your campaign photographs" : "Choose your favorite take"}
             </h3>
             <p>
               {b.stage === "people"
@@ -977,7 +989,7 @@ export default function Studio() {
           </span>
         </div>
         <p className="selection-help">
-          {b.stage === "compose" && b.jobs.some(j => j.shot_label) ? b.jobs.every(j => j.shot_label?.startsWith("Preset ·")) ? `Automatic scene assessment was unavailable. Using ${b.jobs.length} conservative placement preset${b.jobs.length === 1 ? "" : "s"} with your source photos. ` : `${b.jobs.length} placement${b.jobs.length === 1 ? "" : "s"} planned from your RV and backdrop. ` : ""}Save any photos you like to your campaign. Select one photo to
+          {b.jobs.some(j => j.shot_id) ? "Distinct photos from your shoot plan. " : b.stage === "compose" && b.jobs.some(j => j.shot_label) ? b.jobs.every(j => j.shot_label?.startsWith("Preset ·")) ? `Automatic scene assessment was unavailable. Using ${b.jobs.length} conservative placement preset${b.jobs.length === 1 ? "" : "s"} with your source photos. ` : `${b.jobs.length} placement${b.jobs.length === 1 ? "" : "s"} planned from your RV and backdrop. ` : ""}Save any photos you like to your campaign. Select one photo to
           continue editing.
         </p>
         <Progress
@@ -985,11 +997,11 @@ export default function Studio() {
           aria-label={`${ready} of ${b.jobs.length} images ready`}
           className="batch-progress"
         />
-        <div className="results-grid">
+        <div className={`results-grid${b.jobs.some(j => j.shot_id) ? " photoshoot-results" : ""}`}>
           {b.jobs.map((j) => {
             const a = byId.get(j.result_asset_id ?? "");
             return a ? (
-              j.shot_label ? <div className="planned-take" key={j.id}><p className="shot-label">Take {j.slot + 1} · {j.shot_label}</p>{assetCard(a)}</div> : assetCard(a)
+              j.shot_label ? <div className="planned-take" key={j.id}><p className="shot-label">Take {j.slot + 1} · {j.shot_label}{j.output_aspect ? ` · ${generationSizeLabel(j.output_aspect)}` : ""}</p>{assetCard(a)}</div> : assetCard(a)
             ) : (
               <article className="job-card" key={j.id}>
                 <div className="job-placeholder">
@@ -1148,6 +1160,45 @@ export default function Studio() {
               />
             </label>
           )}
+          {genStage === "compose" && (
+            <section className="photoshoot-plan" aria-label="Photoshoot plan">
+              <label className="shoot-toggle">
+                <input type="checkbox" checked={shootMode} disabled={submitting || activeCount > 0}
+                  onChange={e => {
+                    setShootMode(e.target.checked);
+                    if (e.target.checked) {
+                      setShotIds(defaultPhotoshootIds);
+                      const preset = getCampaignPreset(project?.preset_id);
+                      setBriefs(b => ({...b, compose: preset?.mode === "lifestyle" ? preset.composeBrief.split("Create two clearly different shots:")[0].trim() : photoshootContinuity}));
+                      setEnhanced(e => ({...e, compose: undefined}));
+                    }
+                  }} />
+                Plan a lifestyle photoshoot
+              </label>
+              {shootMode && <>
+                <h3>One campaign. Different perspectives.</h3>
+                <p>Choose up to two shots for this pass. Each gets its own framing, camera direction and native image shape. Deselect a shot to choose another. Keep building the same shoot in later passes.</p>
+                <div className="shoot-contact-sheet">
+                  {photoshootShots.map((shot, index) => {
+                    const selected = shotIds.includes(shot.id);
+                    return <button type="button" key={shot.id} className="shoot-shot" aria-pressed={selected}
+                      aria-label={`${shot.label} — ${shot.format}`}
+                      disabled={submitting || activeCount > 0 || (!selected && shotIds.length >= 2)}
+                      onClick={() => setShotIds(ids => selected ? ids.filter(id => id !== shot.id) : [...ids, shot.id])}>
+                      <span className={`shot-frame shot-frame-${shot.aspect}`} aria-hidden="true"><span>{String(index + 1).padStart(2, '0')}</span></span>
+                      <strong>{shot.label}</strong><span>{shot.format}</span><small>{shot.camera}</small><p>{shot.summary}</p>
+                      <em>{completedShotIds.has(shot.id) ? "Photographed" : selected ? "Selected for this pass" : "Add to this pass"}</em>
+                    </button>;
+                  })}
+                </div>
+                <div className="shoot-plan-footer">
+                  <span>{shotIds.length} selected · {completedShotIds.size} of {photoshootShots.length} shot roles photographed</span>
+                  <Button variant="outline" size="sm" disabled={!nextShotIds.length || submitting || activeCount > 0}
+                    onClick={() => setShotIds(nextShotIds)}>Select next unshot pair</Button>
+                </div>
+              </>}
+            </section>
+          )}
           <label className="field-label" htmlFor="creative-brief">
             Creative brief
           </label>
@@ -1186,9 +1237,10 @@ export default function Studio() {
               />
             </div>
           )}
-          {genStage === "compose" && <p className="selection-help">For a natural fit, use a backdrop with visible level ground and an RV photo taken from a similar camera height. Scale follows the scene’s depth; distant RVs stay distant.</p>}
+          {genStage === "compose" && <p className="selection-help">{isPhotoshoot ? "The RV reference preserves the product. The lifestyle reference guides the setting, color, cast styling and props. Close shots can frame just part of the RV to give the human story room." : "For a natural fit, use a backdrop with visible level ground and an RV photo taken from a similar camera height. Scale follows the scene’s depth; distant RVs stay distant."}</p>}
           <div className="generate-footer">
             <div>
+              {!isPhotoshoot && <>
               <Choice
                 value={aspect}
                 onChange={setAspect}
@@ -1201,8 +1253,10 @@ export default function Studio() {
                 ]}
               />
               <Choice value={String(imageCount)} onChange={v=>setImageCount(Number(v))} label="Number of images" options={[["1","1 image"],["2","2 images"],["3","3 images"],["4","4 images"]]} disabled={submitting}/>
+              </>}
+              {isPhotoshoot && <span>{chosenShots.map(s => s.format).join(" + ") || "Select at least one shot"}</span>}
               <small>
-                {genStage === "people"
+                {isPhotoshoot ? `${outputCount} individually composed images. Each shape is generated natively.` : genStage === "people"
                   ? `${imageCount} image${imageCount === 1 ? "" : "s"} billed by fal.`
                   : `${generationSizeLabel(aspect)}. ${imageCount} Max image${imageCount === 1 ? "" : "s"} via fal.`}{" "}
                 Higher resolution takes longer and may cost more.
@@ -1214,7 +1268,9 @@ export default function Studio() {
                 submitting ||
                 !connected.fal ||
                 (enhanced[genStage] || briefs[genStage]).length < 10 ||
-                activeCount + imageCount > 8
+                outputCount < 1 ||
+                activeCount + outputCount > 8 ||
+                (isPhotoshoot && activeCount > 0)
               }
             >
               {submitting ? <LoaderCircle className="spinner" /> : <Sparkles />}
@@ -1222,7 +1278,7 @@ export default function Studio() {
                 ? `Create ${imageCount} landscape${imageCount === 1 ? "" : "s"}`
                 : genStage === "prop"
                   ? `Create ${imageCount} object${imageCount === 1 ? "" : "s"}`
-                  : `Generate ${imageCount} take${imageCount === 1 ? "" : "s"}`}
+                  : isPhotoshoot ? `Photograph ${outputCount} shot${outputCount === 1 ? "" : "s"}` : `Generate ${imageCount} take${imageCount === 1 ? "" : "s"}`}
             </Button>
           </div>
         </section>
@@ -1425,6 +1481,15 @@ export default function Studio() {
             setBatches((old) => [b, ...old.filter((x) => x.id !== b.id)])
           }
           onWizard={() => navigate("create")}
+          onPhotoshoot={async () => {
+            if (project.rv_id && project.landscape_id) await changeStage("compose");
+            setShootMode(true);
+            setShotIds(nextPhotoshootIds(batches).length ? nextPhotoshootIds(batches) : defaultPhotoshootIds);
+            const preset = getCampaignPreset(project.preset_id);
+            setBriefs(b => ({...b, compose: preset?.mode === "lifestyle" ? preset.composeBrief.split("Create two clearly different shots:")[0].trim() : photoshootContinuity}));
+            setEnhanced(e => ({...e, compose: undefined}));
+            navigate("create");
+          }}
         />
       </>
     );
@@ -1642,7 +1707,7 @@ export default function Studio() {
                     : [
                         "Choose an original RV photo, or upload a new reference.",
                         "Find a setting that feels like your next adventure.",
-                        "Choose the photograph before adding people or objects.",
+                        isPhotoshoot ? "A coordinated shoot with candid life, distinct camera positions and a mix of image shapes." : "Choose the photograph before adding people or objects.",
                         "Work on your selected take. Every accepted version is kept.",
                         "Compare with the original RV before approving your photograph.",
                       ][stageIndex]}
@@ -1846,7 +1911,7 @@ export default function Studio() {
                         <img src={a.thumbnail_url || a.url} alt={a.name} />
                         <div>
                           <small>
-                            {i === 0 ? "Your RV" : "Your landscape"}
+                            {i === 0 ? "Your RV" : isPhotoshoot ? "Lifestyle & color reference" : "Your landscape"}
                           </small>
                           <strong>{a.name}</strong>
                         </div>
