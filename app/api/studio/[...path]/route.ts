@@ -33,6 +33,16 @@ import {
   retryJob,
 } from "@/lib/server/jobs";
 import {
+  createModelPack,
+  createModelPackSchema,
+  getModelPack,
+  listModelPacks,
+  modelPackAssignmentSchema,
+  replaceModelPackAssets,
+  updateModelPack,
+  updateModelPackSchema,
+} from "@/lib/server/model-packs";
+import {
   assetUploadSchema,
   stages,
   photographicBrief,
@@ -44,7 +54,7 @@ import {
 } from "@/lib/domain";
 export const dynamic = "force-dynamic";
 async function state(owner: string) {
-  const [assets, projects, memberships] = await Promise.all([
+  const [assets, projects, memberships, modelPacks] = await Promise.all([
     all<Asset>(
       "SELECT * FROM assets WHERE owner_id=? OR owner_id=? ORDER BY created_at DESC",
       owner,
@@ -58,6 +68,7 @@ async function state(owner: string) {
       "SELECT c.asset_id,c.project_id FROM campaign_assets c JOIN projects p ON p.id=c.project_id WHERE p.owner_id=? AND c.removed_at IS NULL",
       owner,
     ),
+    listModelPacks(owner),
   ]);
   return {
     assets: assets.map((a) => ({
@@ -67,6 +78,7 @@ async function state(owner: string) {
         .map((m) => m.project_id),
     })),
     projects,
+    model_packs: modelPacks,
     connections: {
       fal: !!(runtime().FAL_KEY || process.env.FAL_KEY),
       openai: !!(runtime().OPENAI_API_KEY || process.env.OPENAI_API_KEY),
@@ -144,6 +156,35 @@ async function handle(
       return json(await approveCampaignImage(id, owner, await request.json()));
     if (resource === "state" && method === "GET")
       return json(await state(owner));
+    if (resource === "model-packs" && method === "GET" && !id)
+      return json(await listModelPacks(owner));
+    if (resource === "model-packs" && method === "POST" && !id)
+      return json(
+        await createModelPack(
+          owner,
+          createModelPackSchema.parse(await request.json()),
+        ),
+        201,
+      );
+    if (resource === "model-packs" && method === "PATCH" && id && !action)
+      return json(
+        await updateModelPack(
+          id,
+          owner,
+          updateModelPackSchema.parse(await request.json()),
+        ),
+      );
+    if (
+      resource === "model-packs" &&
+      action === "assets" &&
+      method === "PUT"
+    ) {
+      const data = z
+        .object({ assets: z.array(modelPackAssignmentSchema).max(200) })
+        .strict()
+        .parse(await request.json());
+      return json(await replaceModelPackAssets(id, owner, data.assets));
+    }
     if (resource === "media" && method === "GET") {
       const a = await getAsset(id, owner);
       const download = new URL(request.url).searchParams.has("download");
@@ -244,10 +285,14 @@ async function handle(
         .object({
           name: z.string().trim().min(1).max(100).optional(),
           step: z.enum(stages).optional(),
+          model_pack_id: z.string().uuid().nullable().optional(),
         })
         .strict()
         .parse(await request.json());
       const step = data.step ?? p.step;
+      const modelPackId =
+        data.model_pack_id === undefined ? p.model_pack_id : data.model_pack_id;
+      if (modelPackId) await getModelPack(modelPackId, owner);
       if (step !== "rv" && !p.rv_id)
         throw new ApiError(400, "Choose an RV first.");
       if (["compose", "lifestyle", "review"].includes(step) && !p.landscape_id)
@@ -255,9 +300,10 @@ async function handle(
       if (["lifestyle", "review"].includes(step) && !p.composition_id)
         throw new ApiError(400, "Choose a composition first.");
       await run(
-        "UPDATE projects SET name=?,step=?,updated_at=?,version=version+1 WHERE id=? AND owner_id=?",
+        "UPDATE projects SET name=?,step=?,model_pack_id=?,updated_at=?,version=version+1 WHERE id=? AND owner_id=?",
         data.name ?? p.name,
         step,
+        modelPackId,
         Date.now(),
         id,
         owner,
@@ -526,3 +572,4 @@ async function handle(
 export const GET = handle;
 export const POST = handle;
 export const PATCH = handle;
+export const PUT = handle;

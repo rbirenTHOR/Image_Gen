@@ -76,8 +76,86 @@ export interface Project {
   landscape_id: string | null;
   composition_id: string | null;
   current_id: string | null;
+  model_pack_id: string | null;
   updated_at: number;
   version: number;
+}
+export const modelPackRoles = [
+  "base",
+  "identity",
+  "detail",
+  "interior",
+  "style",
+  "evaluation",
+] as const;
+export type ModelPackRole = (typeof modelPackRoles)[number];
+export interface ModelPackAsset {
+  id: string;
+  pack_id: string;
+  asset_id: string;
+  role: ModelPackRole;
+  view: string;
+  room: string;
+  priority: number;
+  approved_for_generation: number;
+  created_at: number;
+}
+export interface ModelPack {
+  id: string;
+  name: string;
+  brand: string;
+  model: string;
+  model_year: string;
+  product_class: string;
+  status: string;
+  created_at: number;
+  updated_at: number;
+  assets: ModelPackAsset[];
+}
+const modelPackRoleOrder: Record<ModelPackRole, number> = {
+  base: 0,
+  identity: 1,
+  detail: 2,
+  interior: 3,
+  style: 4,
+  evaluation: 5,
+};
+/**
+ * Build the ordered fal reference list for a model pack. Image 1 is always the
+ * explicit campaign base when one is supplied. Evaluation images remain held
+ * out, and only approved assets can reach generation.
+ */
+export function selectModelPackReferences(
+  assignments: ModelPackAsset[],
+  baseId?: string | null,
+  preferredView = "",
+) {
+  const normalizedView = preferredView.trim().toLowerCase();
+  const eligible = assignments
+    .filter(
+      (item) =>
+        item.approved_for_generation === 1 && item.role !== "evaluation",
+    )
+    .sort((a, b) => {
+      const aView =
+        normalizedView && a.view.toLowerCase() === normalizedView ? 0 : 1;
+      const bView =
+        normalizedView && b.view.toLowerCase() === normalizedView ? 0 : 1;
+      return (
+        modelPackRoleOrder[a.role] - modelPackRoleOrder[b.role] ||
+        aView - bView ||
+        a.priority - b.priority ||
+        a.created_at - b.created_at
+      );
+    });
+  const first =
+    baseId || eligible.find((item) => item.role === "base")?.asset_id || null;
+  const ids = first ? [first] : [];
+  for (const item of eligible) {
+    if (!ids.includes(item.asset_id)) ids.push(item.asset_id);
+    if (ids.length === 4) break;
+  }
+  return ids;
 }
 export interface Job {
   shot_label?: string;

@@ -1,4 +1,10 @@
-import { sqliteTable, text, integer, index } from "drizzle-orm/sqlite-core";
+import {
+  sqliteTable,
+  text,
+  integer,
+  index,
+  uniqueIndex,
+} from "drizzle-orm/sqlite-core";
 export const assets = sqliteTable(
   "assets",
   {
@@ -34,6 +40,46 @@ export const assets = sqliteTable(
     index("assets_project").on(t.projectId),
   ],
 );
+export const modelPacks = sqliteTable(
+  "model_packs",
+  {
+    id: text("id").primaryKey(),
+    ownerId: text("owner_id").notNull(),
+    name: text("name").notNull(),
+    brand: text("brand").notNull().default(""),
+    model: text("model").notNull().default(""),
+    modelYear: text("model_year").notNull().default(""),
+    productClass: text("product_class").notNull().default(""),
+    status: text("status").notNull().default("active"),
+    createdAt: integer("created_at").notNull(),
+    updatedAt: integer("updated_at").notNull(),
+  },
+  (t) => [index("model_packs_owner_updated").on(t.ownerId, t.updatedAt)],
+);
+export const modelPackAssets = sqliteTable(
+  "model_pack_assets",
+  {
+    id: text("id").primaryKey(),
+    packId: text("pack_id")
+      .notNull()
+      .references(() => modelPacks.id, { onDelete: "cascade" }),
+    assetId: text("asset_id")
+      .notNull()
+      .references(() => assets.id),
+    role: text("role").notNull().default("identity"),
+    view: text("view").notNull().default(""),
+    room: text("room").notNull().default(""),
+    priority: integer("priority").notNull().default(0),
+    approvedForGeneration: integer("approved_for_generation")
+      .notNull()
+      .default(1),
+    createdAt: integer("created_at").notNull(),
+  },
+  (t) => [
+    index("model_pack_assets_pack_priority").on(t.packId, t.priority),
+    uniqueIndex("model_pack_assets_pack_asset").on(t.packId, t.assetId),
+  ],
+);
 export const projects = sqliteTable(
   "projects",
   {
@@ -45,12 +91,16 @@ export const projects = sqliteTable(
     landscapeId: text("landscape_id"),
     compositionId: text("composition_id"),
     currentId: text("current_id"),
+    modelPackId: text("model_pack_id"),
     version: integer("version").notNull().default(0),
     galleryMigrated: integer("gallery_migrated").notNull().default(0),
     createdAt: integer("created_at").notNull(),
     updatedAt: integer("updated_at").notNull(),
   },
-  (t) => [index("projects_owner_updated").on(t.ownerId, t.updatedAt)],
+  (t) => [
+    index("projects_owner_updated").on(t.ownerId, t.updatedAt),
+    index("projects_model_pack").on(t.modelPackId),
+  ],
 );
 export const batches = sqliteTable(
   "batches",

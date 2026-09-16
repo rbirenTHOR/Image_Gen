@@ -27,6 +27,8 @@ import {
   requestSchema,
   activeStatus,
   generationSizes,
+  selectModelPackReferences,
+  type ModelPackAsset,
 } from "../lib/domain.ts";
 test("All Sunburst operations explicitly request Max and one image per independent job", () => {
   for (const stage of [
@@ -187,4 +189,58 @@ test("Native high-resolution outputs preserve aspect and satisfy fal pixel const
 test('Placement plans enforce the requested count',()=>{
   for(const n of [1,2,3,4]) assert.equal(parseCompositionShots({shots:placementPresets.slice(0,n)},n).length,n);
   assert.throws(()=>parseCompositionShots({shots:placementPresets},2));
+});
+
+test("Model packs preserve the campaign base, prefer identity views, and hold evaluation images out", () => {
+  const item = (
+    asset_id: string,
+    role: ModelPackAsset["role"],
+    priority: number,
+    view = "",
+    approved_for_generation = 1,
+  ): ModelPackAsset => ({
+    id: "assignment-" + asset_id,
+    pack_id: "pack",
+    asset_id,
+    role,
+    view,
+    room: "",
+    priority,
+    approved_for_generation,
+    created_at: priority,
+  });
+  const assignments = [
+    item("held-out", "evaluation", 0, "front"),
+    item("unapproved", "identity", 0, "front", 0),
+    item("rear", "identity", 1, "rear"),
+    item("front", "identity", 8, "front"),
+    item("detail", "detail", 0, "front"),
+    item("style", "style", 0, "front"),
+  ];
+  assert.deepEqual(
+    selectModelPackReferences(assignments, "campaign-base", "front"),
+    ["campaign-base", "front", "rear", "detail"],
+  );
+  assert.ok(
+    !selectModelPackReferences(assignments, "campaign-base", "front").includes(
+      "held-out",
+    ),
+  );
+});
+
+test("A model pack supplies its own base and removes duplicate assignments", () => {
+  const base: ModelPackAsset = {
+    id: "one",
+    pack_id: "pack",
+    asset_id: "rv-front",
+    role: "base",
+    view: "front",
+    room: "",
+    priority: 0,
+    approved_for_generation: 1,
+    created_at: 1,
+  };
+  assert.deepEqual(selectModelPackReferences([base, { ...base, id: "two" }]), [
+    "rv-front",
+  ]);
 });

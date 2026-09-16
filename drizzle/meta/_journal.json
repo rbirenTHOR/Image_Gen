@@ -29,6 +29,13 @@
       "when": 1789270235615,
       "tag": "0003_daffy_lizard",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1789522747705,
+      "tag": "0004_gigantic_chamber",
+      "breakpoints": true
     }
   ]
 }

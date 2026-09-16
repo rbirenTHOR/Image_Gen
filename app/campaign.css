@@ -802,6 +802,21 @@
   border-top: 1px solid var(--border);
   background: var(--card);
 }
+.model-pack-control {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-bottom: 9px;
+}
+.model-pack-select {
+  min-width: 0;
+  flex: 1;
+  height: 34px;
+}
+.model-pack-save {
+  flex: none;
+  font-size: 12px;
+}
 .chat-composer {
   border: 1px solid var(--border);
   border-radius: 7px;

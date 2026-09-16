@@ -10,6 +10,14 @@ Select several gallery pictures with their checkboxes to save them together or a
 
 Campaign chat uses Sunburst Max for all image operations, including people when requested. A reference-backed variation uses the fal edit endpoint; a new image uses text-to-image. Chat planning uses the existing OpenAI text connection. It never submits image generation automatically. Each generated image has its own source lineage and can be saved, inspected, approved and downloaded without changing the wizard's current take. The wizard remains available through Build a scene / Create.
 
+### Model packs
+
+A model pack turns approved library images for one RV model into a reusable fal reference set. Attach a pack in campaign chat to place the current scene or selected base first, followed by up to three supporting images. Reference order is deterministic: product identity comes before detail, interior and style images; a matching camera view wins within each role. Duplicate, unapproved and evaluation images are excluded. This keeps the existing four-image fal request contract and manual attachment flow intact.
+
+When two or more references are attached, **Save as model pack** stores them for reuse in other campaigns. The first image becomes the pack base and later images become identity references. The model-pack API also supports richer roles (`base`, `identity`, `detail`, `interior`, `style`, `evaluation`), view and room labels, priority, approval status, archiving and full assignment replacement. Evaluation images are deliberately held out so the same photographs used to judge fidelity do not influence generation.
+
+For a large source library, preserve original photographs as the archive and import web-sized generation proxies into the studio. Assign exterior identity views, interior rooms and detail shots explicitly; keep near-duplicates and low-quality frames out of generation. Start with these reference packs and measure product fidelity on held-out images before considering a Jayco-wide style LoRA. A model-specific tune should follow only if repeated reference-driven campaigns still fail on the same identity details.
+
 The Add images dialog supports multi-select library imports and up to ten uploads at once. Removing an image from the gallery removes only its membership; its original file, history and other campaign memberships remain intact. Approval is separate from saving. Campaign upload originals and generated masters are preserved.
 
 ## Workflow

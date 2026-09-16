@@ -73,6 +73,7 @@ import {
   type Batch,
   type Stage,
   type GenerationStage,
+  type ModelPack,
 } from "@/lib/domain";
 const BASE = "/api/studio/";
 async function api<T>(
@@ -171,6 +172,7 @@ function formatElapsed(ms: number) {
 export default function Studio() {
   const [assets, setAssets] = useState<Asset[]>([]),
     [projects, setProjects] = useState<Project[]>([]),
+    [modelPacks, setModelPacks] = useState<ModelPack[]>([]),
     [projectId, setProjectId] = useState(""),
     [batches, setBatches] = useState<Batch[]>([]),
     [view, setView] = useState("create"),
@@ -248,10 +250,12 @@ export default function Studio() {
     const data = await api<{
       assets: Asset[];
       projects: Project[];
+      model_packs: ModelPack[];
       connections: { fal: boolean; openai: boolean };
     }>("state");
     setAssets(data.assets);
     setProjects(data.projects);
+    setModelPacks(data.model_packs);
     setConnected(data.connections);
     return data;
   }, []);
@@ -264,11 +268,13 @@ export default function Studio() {
     api<{
       assets: Asset[];
       projects: Project[];
+      model_packs: ModelPack[];
       connections: { fal: boolean; openai: boolean };
     }>("bootstrap", {})
       .then((data) => {
         setAssets(data.assets);
         setProjects(data.projects);
+        setModelPacks(data.model_packs);
         setConnected(data.connections);
         const wanted = new URLSearchParams(location.search).get("project");
         setProjectId(
@@ -1390,6 +1396,7 @@ export default function Studio() {
           project={project}
           assets={assets}
           batches={batches}
+          modelPacks={modelPacks}
           onNav={navigate}
           onRefresh={refresh}
           onBatch={(b) =>

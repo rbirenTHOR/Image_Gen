@@ -55,6 +55,8 @@ import {
   type Batch,
   type CampaignTurn,
   type CampaignData,
+  type ModelPack,
+  selectModelPackReferences,
 } from "@/lib/domain";
 async function api<T>(
   path: string,
@@ -273,6 +275,7 @@ export default function CampaignWorkspace({
   project,
   assets,
   batches,
+  modelPacks,
   onNav,
   onRefresh,
   onBatch,
@@ -281,6 +284,7 @@ export default function CampaignWorkspace({
   project: Project;
   assets: Asset[];
   batches: Batch[];
+  modelPacks: ModelPack[];
   onNav: (v: string) => void;
   onRefresh: () => Promise<unknown>;
   onBatch: (b: Batch) => void;
@@ -304,6 +308,7 @@ export default function CampaignWorkspace({
     [picked, setPicked] = useState<string[]>([]),
     [pickerQuery, setPickerQuery] = useState(""),
     [saving, setSaving] = useState(false),
+    [savingPack, setSavingPack] = useState(false),
     [uploadProgress, setUploadProgress] = useState(""),
     [inspect, setInspect] = useState<Asset | null>(null),
     [actual, setActual] = useState(false),
@@ -421,6 +426,80 @@ export default function CampaignWorkspace({
     setRefs(ids);
     setMobilePanel("chat");
     composer.current?.focus();
+  }
+  async function applyModelPack(packId: string) {
+    try {
+      if (packId === "none") {
+        await api<Project>(
+          "projects/" + project.id,
+          { model_pack_id: null },
+          "PATCH",
+        );
+        await onRefresh();
+        toast.success(
+          "Model pack disconnected. Attached references are unchanged.",
+        );
+        return;
+      }
+      const pack = modelPacks.find((item) => item.id === packId);
+      if (!pack) return;
+      const baseId = refs[0] || project.current_id || project.rv_id;
+      const base = baseId ? byId.get(baseId) : undefined;
+      const next = selectModelPackReferences(
+        pack.assets,
+        baseId,
+        base?.angle || "",
+      );
+      if (!next.length)
+        throw new Error(
+          "This model pack has no approved generation references.",
+        );
+      await api<Project>(
+        "projects/" + project.id,
+        { model_pack_id: pack.id },
+        "PATCH",
+      );
+      setRefs(next);
+      await onRefresh();
+      toast.success(
+        `${pack.name} attached with ${next.length} reference${next.length === 1 ? "" : "s"}.`,
+      );
+    } catch (e) {
+      fail(e);
+    }
+  }
+  async function saveReferencesAsPack() {
+    if (!refs.length || savingPack) return;
+    setSavingPack(true);
+    try {
+      const first = byId.get(refs[0]);
+      const label = [first?.year, first?.brand, first?.model]
+        .filter(Boolean)
+        .join(" ");
+      const pack = await api<ModelPack>("model-packs", {
+        name: label || `${project.name} references`,
+        brand: first?.brand || "",
+        model: first?.model || "",
+        model_year: first?.year || "",
+        assets: refs.map((asset_id, index) => ({
+          asset_id,
+          role: index === 0 ? "base" : "identity",
+          priority: index,
+          view: byId.get(asset_id)?.angle || "",
+        })),
+      });
+      await api<Project>(
+        "projects/" + project.id,
+        { model_pack_id: pack.id },
+        "PATCH",
+      );
+      await onRefresh();
+      toast.success(`${pack.name} saved as a reusable model pack.`);
+    } catch (e) {
+      fail(e);
+    } finally {
+      setSavingPack(false);
+    }
   }
   function openImage(a: Asset) {
     setInspect(a);
@@ -1221,6 +1300,48 @@ export default function CampaignWorkspace({
             <div ref={chatEnd} />
           </div>
           <div className="chat-composer-wrap">
+            {(modelPacks.some((pack) => pack.status === "active") ||
+              refs.length > 1) && (
+              <div className="model-pack-control">
+                <Select
+                  value={project.model_pack_id || "none"}
+                  onValueChange={applyModelPack}
+                >
+                  <SelectTrigger
+                    className="model-pack-select"
+                    aria-label="Campaign model pack"
+                  >
+                    <SelectValue placeholder="Choose a model pack" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">No model pack</SelectItem>
+                    {modelPacks
+                      .filter((pack) => pack.status === "active")
+                      .map((pack) => (
+                        <SelectItem key={pack.id} value={pack.id}>
+                          {pack.name} · {pack.assets.length} images
+                        </SelectItem>
+                      ))}
+                  </SelectContent>
+                </Select>
+                {refs.length > 1 && !project.model_pack_id && (
+                  <Button
+                    className="model-pack-save"
+                    variant="ghost"
+                    size="sm"
+                    disabled={savingPack}
+                    onClick={saveReferencesAsPack}
+                  >
+                    {savingPack ? (
+                      <LoaderCircle className="spinner" />
+                    ) : (
+                      <Bookmark />
+                    )}
+                    Save as model pack
+                  </Button>
+                )}
+              </div>
+            )}
             {refs.length > 0 && (
               <div className="composer-references">
                 {refs.map((id, i) => {
