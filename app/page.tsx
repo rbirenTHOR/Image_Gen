@@ -504,6 +504,9 @@ export default function Studio() {
   async function generate() {
     if (!project || outputCount < 1) return;
     const id = crypto.randomUUID();
+    // This runs only from the generation button, never while rendering.
+    // eslint-disable-next-line react-hooks/purity
+    const requestedAt = Date.now();
     const prompt =
       (enhanced[genStage] || briefs[genStage]) +
       (genStage === "people"
@@ -534,7 +537,7 @@ export default function Studio() {
               ? "text-to-image"
               : "edit"),
       quality: genStage === "people" ? "native" : "max",
-      created_at: Date.now(),
+      created_at: requestedAt,
       inputs_json: "[]",
       jobs: Array.from({length:outputCount}, (_,slot) => ({
         id: id + "-" + slot,
@@ -544,8 +547,8 @@ export default function Studio() {
         status: "submitting",
         result_asset_id: null,
         error: null,
-        created_at: Date.now(),
-        updated_at: Date.now(),
+        created_at: requestedAt,
+        updated_at: requestedAt,
         request_id: null,
         elapsed_ms: null,
       })),
