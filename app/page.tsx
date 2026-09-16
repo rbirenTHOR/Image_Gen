@@ -79,7 +79,8 @@ import {
   campaignPresets,
   getCampaignPreset,
 } from "@/lib/campaign-presets";
-import { photoshootShots, defaultPhotoshootIds, nextPhotoshootIds, photoshootContinuity } from "@/lib/photoshoot";
+import { photoshootShots, defaultPhotoshootIds, nextPhotoshootIds, photoshootContinuity, photographedShotIds } from "@/lib/photoshoot";
+import { PhotoshootPlan } from "@/components/photoshoot-plan";
 const BASE = "/api/studio/";
 async function api<T>(
   path: string,
@@ -255,7 +256,7 @@ export default function Studio() {
   const isPhotoshoot = genStage === "compose" && shootMode;
   const chosenShots = shotIds.map(id => photoshootShots.find(s => s.id === id)!);
   const outputCount = isPhotoshoot ? chosenShots.length : imageCount;
-  const completedShotIds = new Set(batches.filter(b => b.stage === "compose").flatMap(b => b.jobs.filter(j => j.status === "ready" && j.shot_id).map(j => j.shot_id)));
+  const completedShotIds = photographedShotIds(batches);
   const nextShotIds = nextPhotoshootIds(batches);
   const latest = batches.find((b) => b.stage === genStage),
     activeCount = batches
@@ -1178,28 +1179,8 @@ export default function Studio() {
                   }} />
                 Plan a lifestyle photoshoot
               </label>
-              {shootMode && <>
-                <h3>One campaign. Different perspectives.</h3>
-                <p>Choose up to two shots for this pass. Each gets its own framing, camera direction and native image shape. Deselect a shot to choose another. Keep building the same shoot in later passes.</p>
-                <div className="shoot-contact-sheet">
-                  {photoshootShots.map((shot, index) => {
-                    const selected = shotIds.includes(shot.id);
-                    return <button type="button" key={shot.id} className="shoot-shot" aria-pressed={selected}
-                      aria-label={`${shot.label} — ${shot.format}`}
-                      disabled={submitting || activeCount > 0 || (!selected && shotIds.length >= 2)}
-                      onClick={() => setShotIds(ids => selected ? ids.filter(id => id !== shot.id) : [...ids, shot.id])}>
-                      <span className={`shot-frame shot-frame-${shot.aspect}`} aria-hidden="true"><span>{String(index + 1).padStart(2, '0')}</span></span>
-                      <strong>{shot.label}</strong><span>{shot.format}</span><small>{shot.camera}</small><p>{shot.summary}</p>
-                      <em>{completedShotIds.has(shot.id) ? "Photographed" : selected ? "Selected for this pass" : "Add to this pass"}</em>
-                    </button>;
-                  })}
-                </div>
-                <div className="shoot-plan-footer">
-                  <span>{shotIds.length} selected · {completedShotIds.size} of {photoshootShots.length} shot roles photographed</span>
-                  <Button variant="outline" size="sm" disabled={!nextShotIds.length || submitting || activeCount > 0}
-                    onClick={() => setShotIds(nextShotIds)}>Select next unshot pair</Button>
-                </div>
-              </>}
+              {shootMode && <PhotoshootPlan selectedIds={shotIds} completedIds={completedShotIds}
+                nextIds={nextShotIds} disabled={submitting || activeCount > 0} onSelect={setShotIds} />}
             </section>
           )}
           <label className="field-label" htmlFor="creative-brief">
@@ -1253,6 +1234,8 @@ export default function Studio() {
                   ["landscape_16_9", "Wide · 16:9"],
                   ["square_hd", "Square · 1:1"],
                   ["portrait_4_3", "Portrait · 3:4"],
+                  ["portrait_4_5", "Feed · 4:5"],
+                  ["portrait_9_16", "Story · 9:16"],
                 ]}
               />
               <Choice value={String(imageCount)} onChange={v=>setImageCount(Number(v))} label="Number of images" options={[["1","1 image"],["2","2 images"],["3","3 images"],["4","4 images"]]} disabled={submitting}/>

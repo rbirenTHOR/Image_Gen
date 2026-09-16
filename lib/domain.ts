@@ -12,6 +12,8 @@ export const generationSizes: Record<
   landscape_16_9: { width: 3840, height: 2160 },
   square_hd: { width: 2880, height: 2880 },
   portrait_4_3: { width: 2448, height: 3264 },
+  portrait_4_5: { width: 2560, height: 3200 },
+  portrait_9_16: { width: 2160, height: 3840 },
 };
 export function generationSizeLabel(aspect: string) {
   const size = generationSizes[aspect];
@@ -203,7 +205,7 @@ export const requestSchema = z.object({
   ]),
   prompt: z.string().trim().min(10).max(12000),
   aspect: z
-    .enum(["landscape_4_3", "landscape_16_9", "square_hd", "portrait_4_3"])
+    .enum(["landscape_4_3", "landscape_16_9", "square_hd", "portrait_4_3", "portrait_4_5", "portrait_9_16"])
     .default("landscape_4_3"),
   shot_ids: z.array(z.string().min(1).max(50)).min(1).max(2).optional(),
   reference_id: z.string().max(100).optional(),

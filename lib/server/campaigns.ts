@@ -31,7 +31,7 @@ const generationSchema = z
     count: generationCountSchema,
     prompt: z.string().trim().min(10).max(12000),
     aspect: z
-      .enum(["landscape_4_3", "landscape_16_9", "square_hd", "portrait_4_3"])
+      .enum(["landscape_4_3", "landscape_16_9", "square_hd", "portrait_4_3", "portrait_4_5", "portrait_9_16"])
       .default("landscape_4_3"),
   })
   .strict();

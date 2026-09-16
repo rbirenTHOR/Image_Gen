@@ -1515,6 +1515,39 @@
 .photoshoot-results .asset-photo {height:auto;}
 .photoshoot-results .asset-photo img {height:auto; width:100%;}
 @media(max-width:1000px) {.shoot-contact-sheet {grid-template-columns:repeat(2,minmax(0,1fr));}}
-@media(max-width:480px) {.photoshoot-plan {padding:14px;} .shoot-contact-sheet {grid-template-columns:1fr;} .shoot-shot {display:grid; grid-template-columns:70px 1fr;} .shot-frame {grid-row:span 5;width:62px;} .shot-frame-portrait_4_3 {width:40px;} .shoot-shot p {margin:0;} }
+
 
 .campaign-gallery-grid {align-items:start;}
+
+.photoshoot-plan h4 {font-size:16px; font-weight:600; margin:22px 0 8px;}
+.shoot-selected-pair {grid-template-columns:repeat(2,minmax(0,1fr)); margin-top:10px;}
+.shoot-selection-note {font-size:12px!important; overflow-wrap:anywhere;}
+.shoot-passes {display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:10px;}
+.shoot-pass {display:flex; flex-direction:column; gap:8px; text-align:left; padding:14px; border:1px solid var(--border); border-radius:8px; background:var(--card); min-width:0;}
+.shoot-pass strong {font-size:14px;}
+.shoot-pass span {font-size:13px; color:var(--muted-foreground); line-height:1.45;}
+.shoot-pass small {font-size:12px; margin-top:auto; color:var(--brand);}
+.shoot-pass[aria-pressed=true] {border-color:var(--brand); box-shadow:0 0 0 1px var(--brand);}
+.shoot-pass:disabled {opacity:.6;}
+.shoot-browse {border-top:1px solid var(--border); margin-top:22px; padding-top:18px;}
+.shoot-browse summary {cursor:pointer; font-weight:600; font-size:14px;}
+.shoot-filters {display:flex; flex-wrap:wrap; gap:8px; margin-top:14px;}
+.shoot-filters button {font-size:12px; padding:7px 10px; border:1px solid var(--border); border-radius:20px;}
+.shoot-filters button[aria-pressed=true] {background:var(--secondary); border-color:var(--brand); color:var(--brand);}
+.shot-frame {height:auto; aspect-ratio:16/9; width:110px;}
+.shot-frame-portrait_4_3 {aspect-ratio:3/4; width:47px;}
+.shot-frame-portrait_4_5 {aspect-ratio:4/5; width:50px;}
+.shot-frame-portrait_9_16 {aspect-ratio:9/16; width:35px;}
+.shot-frame-square_hd {aspect-ratio:1; width:62px;}
+.shot-frame-landscape_4_3 {aspect-ratio:4/3; width:83px;}
+.shot-usage {color:var(--muted-foreground); line-height:1.5;}
+@media(max-width:1000px) {.shoot-passes {grid-template-columns:repeat(2,minmax(0,1fr));}}
+@media(max-width:480px) {.photoshoot-plan {padding:14px;} .shoot-contact-sheet,.shoot-passes {grid-template-columns:1fr;}}
+
+.campaign-topbar-actions {display:flex; align-items:center; gap:10px; flex-shrink:0;}
+@media(max-width:850px) {
+  .campaign-topbar {height:auto; min-height:70px; display:grid; grid-template-columns:auto 1fr; gap:0 12px; padding-top:12px; padding-bottom:12px;}
+  .campaign-topbar nav {position:static; transform:none; justify-self:end; margin:0; height:42px; gap:14px;}
+  .campaign-topbar-actions {grid-column:1/-1; flex-wrap:wrap; padding-top:8px;}
+  .campaign-topbar-actions [data-slot="button"] {font-size:13px;}
+}

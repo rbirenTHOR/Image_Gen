@@ -6,7 +6,7 @@ const draftSchema = z.object({
   promptEdits: z.record(z.string().max(12000)),
   counts: z.record(z.number().int().min(1).max(4)).default({}),
   aspects: z.record(
-    z.enum(["landscape_4_3", "landscape_16_9", "square_hd", "portrait_4_3"]),
+    z.enum(["landscape_4_3", "landscape_16_9", "square_hd", "portrait_4_3", "portrait_4_5", "portrait_9_16"]),
   ),
 });
 export type CampaignDraft = z.infer<typeof draftSchema>;

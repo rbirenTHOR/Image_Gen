@@ -22,6 +22,7 @@ import {
   Send,
   Copy,
 } from "lucide-react";
+import { photoshootShots } from "@/lib/photoshoot";
 import { OriginalPhoto } from "@/components/original-photo";
 import { PhotoSource } from "@/components/photo-source";
 import { Button } from "@/components/ui/button";
@@ -137,6 +138,8 @@ function Aspect({
         <SelectItem value="landscape_16_9">Wide · 16:9</SelectItem>
         <SelectItem value="square_hd">Square · 1:1</SelectItem>
         <SelectItem value="portrait_4_3">Portrait · 3:4</SelectItem>
+        <SelectItem value="portrait_4_5">Feed · 4:5</SelectItem>
+        <SelectItem value="portrait_9_16">Story · 9:16</SelectItem>
       </SelectContent>
     </Select>
   );
@@ -165,7 +168,7 @@ function StudioHeader({
           Campaigns
         </button>
       </nav>
-      {children}
+      {children && <div className="campaign-topbar-actions">{children}</div>}
     </header>
   );
 }
@@ -306,7 +309,7 @@ export function CampaignHome({
               <small>RV and setting will be chosen in the wizard.</small>
             ) : (
               <>
-              <small>{preset.mode === "lifestyle" ? "6 shot roles · 2 per pass · wide, portrait, square & editorial" : `${preset.count} takes · ${generationSizeLabel(preset.aspect)}`}</small>
+              <small>{preset.mode === "lifestyle" ? `${photoshootShots.length} shot roles · 2 per pass · web, editorial, social & Stories` : `${preset.count} takes · ${generationSizeLabel(preset.aspect)}`}</small>
               <small>
                 {resolved.rv && resolved.landscape
                   ? "Ready · product and Dropbox style reference found"

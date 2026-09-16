@@ -136,6 +136,8 @@ test("Native high-resolution outputs preserve aspect and satisfy fal pixel const
     landscape_16_9: 16 / 9,
     square_hd: 1,
     portrait_4_3: 3 / 4,
+    portrait_4_5: 4 / 5,
+    portrait_9_16: 9 / 16,
   };
   for (const [aspect, size] of Object.entries(generationSizes)) {
     assert.equal(size.width % 16, 0);
@@ -334,4 +336,29 @@ test('Photoshoot selection preserves order, mixed native formats and a two-shot 
     {width:2448,height:3264});
   const history = [{stage:'compose', jobs:[{status:'ready',shot_id:'establishing'}, {status:'failed',shot_id:'portrait'}, {status:'ready',shot_id:''}]}] as never;
   assert.deepEqual(nextPhotoshootIds(history), ['portrait','detail']);
+});
+
+
+test('Full shoot coverage pairs every role once and advances only past ready compositions', async () => {
+  const { photoshootShots, photoshootPasses, photoshootCategories, nextPhotoshootIds, photographedShotIds, photoshootPrompt } = await import('../lib/photoshoot.ts');
+  const ids = photoshootShots.map(s => s.id);
+  const planned = photoshootPasses.flatMap(p => p.shotIds);
+  assert.equal(ids.length, 18);
+  assert.equal(new Set(planned).size, planned.length);
+  assert.deepEqual(new Set(planned), new Set(ids));
+  assert.equal(new Set(photoshootShots.map(s => s.aspect)).size, 6);
+  for (const s of photoshootShots) {
+    assert.ok(photoshootCategories.some(c => c.id === s.category));
+    assert.ok(s.usage && s.camera && s.direction);
+    assert.match(photoshootPrompt(s, 'Keep the same source cast and light.'), /Intended use:/);
+    assert.ok(generationSizes[s.aspect]);
+  }
+  assert.ok(photoshootPasses.every(p => p.shotIds.length === 2));
+  const history = [{stage:'compose',jobs:[
+    ...['establishing','portrait','social-feed','story-vertical','obsolete'].map(shot_id => ({shot_id,status:'ready'})),
+    {shot_id:'detail',status:'failed'}]}, {stage:'variation',jobs:[{shot_id:'breakfast',status:'ready'}]}] as never;
+  assert.equal(photographedShotIds(history).size, 4);
+  assert.deepEqual(nextPhotoshootIds(history), ['detail','breakfast']);
+  const all = [{stage:'compose',jobs:ids.map(shot_id => ({shot_id,status:'ready'}))}] as never;
+  assert.deepEqual(nextPhotoshootIds(all), []);
 });

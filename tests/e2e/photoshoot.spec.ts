@@ -53,3 +53,48 @@ test('Mixed-format shoot preserves sizes and shot identity through fallback, ret
   expect((await control()).records.filter((r:ProviderRecord)=>r.kind==='image').length).toBe(beforeNoGround);
   await control({noGround:false});
 });
+
+test('Purpose-led selection keeps two-shot cost control and submits native social formats', async ({ context, page }) => {
+  await context.addCookies([{name:'__sites_local_auth',value:'1',url:'http://localhost:6173'}]);
+  const control = async (data={}) => (await page.request.post('http://127.0.0.1:6199/__control',{data})).json();
+  await page.goto('/');
+  const p = await (await page.request.post('/api/studio/projects',{data:{name:'Full shoot selection'}})).json();
+  for (const [stage,asset_id] of [['rv','sample-rv'],['landscape','mountain-stillness']])
+    expect((await page.request.post('/api/studio/projects/'+p.id+'/select',{data:{stage,asset_id}})).ok()).toBe(true);
+  const before = await control({failPlan:0,failSubmit:0,failSave:0,failChat:0,noGround:false,delay:10});
+  await page.goto('/?project='+p.id+'&view=campaign');
+  await page.getByRole('button',{name:'Plan photoshoot',exact:true}).click();
+  const plan = page.getByRole('region',{name:'Photoshoot plan',exact:true});
+  await expect(plan.getByText('0 of 18 shot roles photographed · 2 selected',{exact:true})).toBeVisible();
+  await plan.getByRole('button',{name:'Select Social & Stories pair',exact:true}).click();
+  const selected = plan.getByRole('region',{name:'Selected shots'});
+  await expect(selected.getByRole('button')).toHaveCount(2);
+  await expect(selected.getByRole('button',{name:'Remove A pause worth sharing — Feed · 4:5'})).toBeVisible();
+  await expect(selected.getByRole('button',{name:'Remove Ready for what is next — Story · 9:16'})).toBeVisible();
+  await plan.getByText('Browse all 18 individual shots',{exact:true}).click();
+  await plan.getByRole('button',{name:'Product coverage',exact:true}).click();
+  const product = plan.getByRole('button',{name:'The RV at camp — Editorial · 4:3',exact:true});
+  await expect(product).toBeDisabled();
+  await selected.getByRole('button',{name:'Remove A pause worth sharing — Feed · 4:5'}).click();
+  await expect(product).toBeEnabled();
+  await product.click();
+  await expect(selected.getByRole('button')).toHaveCount(2);
+  await plan.getByRole('button',{name:'Select Social & Stories pair',exact:true}).click();
+  expect((await control()).records.length).toBe(before.records.length);
+  await page.getByRole('button',{name:'Photograph 2 shots',exact:true}).click();
+  await expect(page.locator('.batch-section').first().getByText('2 of 2 ready',{exact:true})).toBeVisible({timeout:30000});
+  const images=(await control()).records.slice(before.records.length).filter((r:ProviderRecord)=>r.kind==='image');
+  expect(images).toHaveLength(2);
+  expect(images.map((r:ProviderRecord)=>r.input.image_size)).toEqual([{width:2560,height:3200},{width:2160,height:3840}]);
+  expect(images[0].input.prompt).toContain('FEED-FIRST HUMAN MOMENT');
+  expect(images[1].input.prompt).toContain('FULL-HEIGHT VERTICAL STORY');
+  await expect(plan.getByText('2 of 18 shot roles photographed · 2 selected',{exact:true})).toBeVisible();
+  await plan.getByRole('button',{name:'Select next unshot pair',exact:true}).click();
+  await expect(selected.getByRole('button',{name:'Remove The whole escape — Wide · 16:9'})).toBeVisible();
+  expect((await control()).records.filter((r:ProviderRecord)=>r.kind==='image').length).toBe(before.records.filter((r:ProviderRecord)=>r.kind==='image').length+2);
+  await page.reload();
+  await page.goto('/?project='+p.id+'&view=campaign');
+  await page.getByRole('button',{name:'Plan photoshoot',exact:true}).click();
+  await expect(page.getByText('2 of 18 shot roles photographed · 2 selected',{exact:true})).toBeVisible();
+  expect(await page.locator('body').evaluate(el=>el.scrollWidth <= window.innerWidth)).toBe(true);
+});
