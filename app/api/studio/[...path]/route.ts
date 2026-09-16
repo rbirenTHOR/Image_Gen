@@ -1,3 +1,4 @@
+import { getFlow, saveFlow, generateFlow } from "@/lib/server/campaign-flow";
 import { ensureNatureLibrary, imageObject } from "@/lib/server/nature-library";
 import { searchLandscapes, importLandscape } from '@/lib/server/landscape-discovery';
 import {
@@ -175,6 +176,11 @@ async function handle(
       method === "POST"
     )
       return json(await approveCampaignImage(id, owner, await request.json()));
+    if (resource === "projects" && action === "workflow") {
+      if (method === "GET") return json(await getFlow(id, owner));
+      if (method === "PUT") return json(await saveFlow(id, owner, await request.json()));
+      if (method === "POST" && path[3] === "generate") return json(await generateFlow(id, owner, await request.json()), 201);
+    }
     if (resource === "state" && method === "GET")
       return json(await state(owner));
     if (resource === "model-packs" && method === "GET" && !id)
@@ -429,14 +435,21 @@ async function handle(
           );
         fields = { ...fields, current: a.id, step: "lifestyle" };
       }
+      const workflow = p.workflow_json ? JSON.parse(p.workflow_json) : null;
+      if (workflow) {
+        if (workflow.rv_id !== fields.rv) workflow.identity_ids = [];
+        workflow.rv_id = fields.rv;
+        workflow.scene_id = fields.landscape;
+      }
       const result = await run(
-        "UPDATE projects SET rv_id=?,landscape_id=?,composition_id=?,current_id=?,step=?,updated_at=?,version=version+1 WHERE id=? AND owner_id=? AND version=?",
+        "UPDATE projects SET rv_id=?,landscape_id=?,composition_id=?,current_id=?,step=?,updated_at=?,version=version+1,workflow_json=?,workflow_revision=workflow_revision+1 WHERE id=? AND owner_id=? AND version=?",
         fields.rv,
         fields.landscape,
         fields.composition,
         fields.current,
         fields.step,
         Date.now(),
+        workflow ? JSON.stringify(workflow) : "",
         id,
         owner,
         p.version,
@@ -462,7 +475,7 @@ async function handle(
     if (resource === "projects" && action === "batches" && method === "GET") {
       await getProject(id, owner);
       const batches = await all<{ id: string }>(
-        "SELECT id FROM batches WHERE project_id=? AND owner_id=? ORDER BY created_at DESC LIMIT 40",
+        "SELECT id FROM batches WHERE project_id=? AND owner_id=? ORDER BY created_at DESC",
         id,
         owner,
       );

@@ -162,8 +162,8 @@ function StudioHeader({
         THOR STUDIO
       </button>
       <nav aria-label="Studio navigation">
-        <button onClick={() => onNav("library")}>Library</button>
-        <button onClick={() => onNav("create")}>Create</button>
+        <button onClick={() => onNav("inventory")}>RV Inventory</button>
+        <button onClick={() => onNav("library")}>Asset Library</button>
         <button className="active" onClick={() => onNav("campaigns")}>
           Campaigns
         </button>
@@ -187,7 +187,7 @@ export function CampaignHome({
 }) {
   const [search, setSearch] = useState("");
   const [newOpen, setNewOpen] = useState(false);
-  const [presetId, setPresetId] = useState("jayco-eagle-north-point");
+  const [presetId, setPresetId] = useState("blank");
   const [creating, setCreating] = useState(false);
   const preset = getCampaignPreset(presetId)!;
   const resolved = resolveCampaignPreset(preset, assets);
@@ -306,7 +306,7 @@ export function CampaignHome({
             <span>{preset.rvLabel}</span>
             <span>{preset.styleLabel}</span>
             {preset.id === "blank" ? (
-              <small>RV and setting will be chosen in the wizard.</small>
+              <small>Choose an RV, scene and shoot plan in your campaign workspace.</small>
             ) : (
               <>
               <small>{preset.mode === "lifestyle" ? `${photoshootShots.length} shot roles · 2 per pass · web, editorial, social & Stories` : `${preset.count} takes · ${generationSizeLabel(preset.aspect)}`}</small>
@@ -348,6 +348,8 @@ export default function CampaignWorkspace({
   onBatch,
   onWizard,
   onPhotoshoot,
+  embedded = false,
+  initialInspect = null,
 }: {
   project: Project;
   assets: Asset[];
@@ -358,6 +360,8 @@ export default function CampaignWorkspace({
   onBatch: (b: Batch) => void;
   onWizard: () => void;
   onPhotoshoot: () => void;
+  embedded?: boolean;
+  initialInspect?: Asset | null;
 }) {
   const [data, setData] = useState<CampaignData>({ saved_ids: [], turns: [] }),
     [loading, setLoading] = useState(true),
@@ -379,7 +383,7 @@ export default function CampaignWorkspace({
     [saving, setSaving] = useState(false),
     [savingPack, setSavingPack] = useState(false),
     [uploadProgress, setUploadProgress] = useState(""),
-    [inspect, setInspect] = useState<Asset | null>(null),
+    [inspect, setInspect] = useState<Asset | null>(initialInspect),
     [actual, setActual] = useState(false),
     [compare, setCompare] = useState(false),
     [checks, setChecks] = useState({ rv: false, scene: false, crop: false }),
@@ -829,13 +833,13 @@ export default function CampaignWorkspace({
   }
   return (
     <div className="campaign-mode">
-      <StudioHeader onNav={onNav}>
+      {!embedded && <StudioHeader onNav={onNav}>
         <Button onClick={onPhotoshoot}>Plan photoshoot</Button>
         <Button variant="outline" onClick={onWizard}>
           <SlidersHorizontal />
           Build a scene
         </Button>
-      </StudioHeader>
+      </StudioHeader>}
       <div className="campaign-mobile-switch">
         <Tabs value={mobilePanel} onValueChange={setMobilePanel}>
           <TabsList>

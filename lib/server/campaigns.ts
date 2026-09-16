@@ -1,3 +1,4 @@
+import { flowSchema, resolvedShot } from "@/lib/campaign-flow";
 import { z } from "zod";
 import { all, one, run, runtime, ApiError } from "./runtime";
 import { getAsset, getProject } from "./library";
@@ -31,7 +32,14 @@ const generationSchema = z
     count: generationCountSchema,
     prompt: z.string().trim().min(10).max(12000),
     aspect: z
-      .enum(["landscape_4_3", "landscape_16_9", "square_hd", "portrait_4_3", "portrait_4_5", "portrait_9_16"])
+      .enum([
+        "landscape_4_3",
+        "landscape_16_9",
+        "square_hd",
+        "portrait_4_3",
+        "portrait_4_5",
+        "portrait_9_16",
+      ])
       .default("landscape_4_3"),
   })
   .strict();
@@ -308,6 +316,41 @@ export async function generateTurn(
       throw new ApiError(409, "This direction was changed in another window.");
   }
   const refs = JSON.parse(t.references_json) as string[];
+  // A refinement of a planned image remains a version of that shot. The
+  // original campaign snapshot is retained even if the current brief changed.
+  const parent = refs[0]
+    ? await one<{
+        shot_id: string;
+        workflow_json: string;
+        workflow_revision: number;
+      }>(
+        "SELECT j.shot_id,b.workflow_json,b.workflow_revision FROM jobs j JOIN batches b ON b.id=j.batch_id WHERE j.result_asset_id=? AND b.project_id=? AND b.owner_id=?",
+        refs[0],
+        pid,
+        owner,
+      )
+    : null;
+  let flow: Parameters<typeof startBatch>[2];
+  if (parent?.workflow_json && parent.shot_id) {
+    const snapshot = flowSchema.parse(JSON.parse(parent.workflow_json));
+    const planned = snapshot.shots.find((s) => s.id === parent.shot_id);
+    if (planned) {
+      if (data.count > 2)
+        throw new ApiError(
+          400,
+          "Choose at most two versions of a campaign shot per pass.",
+        );
+      planned.aspect = data.aspect;
+      flow = {
+        shots: Array.from({ length: data.count }, () =>
+          resolvedShot(planned, snapshot),
+        ),
+        inputs: refs,
+        snapshot: JSON.stringify(snapshot),
+        revision: parent.workflow_revision,
+      };
+    }
+  }
   try {
     return await startBatch(
       {
@@ -320,6 +363,7 @@ export async function generateTurn(
         reference_ids: refs,
       },
       owner,
+      flow,
     );
   } catch (e) {
     if (e instanceof ApiError && e.status === 409) throw e;

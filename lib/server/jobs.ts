@@ -114,9 +114,9 @@ async function submitJob(job: StoredJob, b: StoredBatch, images: string[]) {
     );
   }
 }
-export async function startBatch(raw: unknown, owner: string) {
+export async function startBatch(raw: unknown, owner: string, flow?: {shots: import("@/lib/photoshoot").PhotoshootShot[]; inputs:string[]; snapshot:string; revision:number}) {
   const data = requestSchema.parse(raw);
-  let shootShots;
+  let shootShots = flow?.shots;
   if (data.shot_ids) {
     if (data.stage !== "compose" || data.shot_ids.length !== data.count)
       throw new ApiError(400, "Photoshoot shots must match the composition image count.");
@@ -134,6 +134,7 @@ export async function startBatch(raw: unknown, owner: string) {
       throw new ApiError(409, "This request identifier is already in use.");
     const existingJobs = (await batchView(data.id, owner)).jobs;
     if (
+      (exists.workflow_json || "") !== (flow?.snapshot || "") ||
       exists.project_id !== data.project_id ||
       exists.stage !== data.stage ||
       exists.prompt !== data.prompt ||
@@ -156,7 +157,7 @@ export async function startBatch(raw: unknown, owner: string) {
   if (data.stage === "compose") {
     if (!p.rv_id || !p.landscape_id)
       throw new ApiError(400, "Choose an RV and a landscape first.");
-    inputs = [p.rv_id, p.landscape_id];
+    inputs = flow?.inputs ?? [p.rv_id, p.landscape_id];
   }
   if (data.stage === "people" || data.stage === "objects") {
     if (!p.composition_id || !p.current_id)
@@ -207,7 +208,7 @@ export async function startBatch(raw: unknown, owner: string) {
   const statements = [
     runtime()
       .DB.prepare(
-        "INSERT INTO batches(id,owner_id,project_id,stage,prompt,endpoint,quality,aspect,inputs_json,created_at) SELECT ?,?,?,?,?,?,?,?,?,? WHERE (SELECT COUNT(*) FROM jobs j JOIN batches b ON b.id=j.batch_id WHERE b.owner_id=? AND j.status IN ('submitting','queued','generating','saving')) <= ?",
+        "INSERT INTO batches(id,owner_id,project_id,stage,prompt,endpoint,quality,aspect,inputs_json,created_at,workflow_json,workflow_revision) SELECT ?,?,?,?,?,?,?,?,?,?,?,? WHERE (SELECT COUNT(*) FROM jobs j JOIN batches b ON b.id=j.batch_id WHERE b.owner_id=? AND j.status IN ('submitting','queued','generating','saving')) <= ?",
       )
       .bind(
         data.id,
@@ -220,6 +221,8 @@ export async function startBatch(raw: unknown, owner: string) {
         data.aspect,
         JSON.stringify(inputs),
         now,
+        flow?.snapshot ?? "",
+        flow?.revision ?? 0,
         owner,
         8 - data.count,
       ),
@@ -248,7 +251,7 @@ export async function startBatch(raw: unknown, owner: string) {
         owner,
       )
     )
-      return startBatch(data, owner);
+      return startBatch(data, owner, flow);
     const running = await one<{ n: number }>(
       "SELECT COUNT(*) n FROM jobs j JOIN batches b ON b.id=j.batch_id WHERE b.owner_id=? AND j.status IN ('submitting','queued','generating','saving')",
       owner,
@@ -425,6 +428,7 @@ async function saveImage(
     " · Take " +
     (job.slot + 1);
   await runtime().DB.batch([
+
     runtime()
       .DB.prepare(
         "INSERT OR IGNORE INTO assets(id,owner_id,kind,name,source,r2_key,mime,width,height,prompt,endpoint,quality,parent_id,project_id,batch_id,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
@@ -447,6 +451,7 @@ async function saveImage(
         b.id,
         Date.now(),
       ),
+    ...(["compose", "people", "objects", "campaign", "variation"].includes(b.stage) ? [runtime().DB.prepare("INSERT OR IGNORE INTO campaign_assets(id,project_id,asset_id,created_at) VALUES(?,?,?,?)").bind(b.project_id+":"+id,b.project_id,id,Date.now())] : []),
     runtime()
       .DB.prepare(
         "UPDATE assets SET width=?,height=? WHERE id=? AND owner_id=? AND (width=0 OR height=0)",

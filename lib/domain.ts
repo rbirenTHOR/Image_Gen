@@ -70,6 +70,8 @@ export interface Asset {
   url: string;
 }
 export interface Project {
+  workflow_json?: string;
+  workflow_revision?: number;
   saved_count?: number;
   id: string;
   name: string;
@@ -177,6 +179,8 @@ export interface Job {
   elapsed_ms: number | null;
 }
 export interface Batch {
+  workflow_json?: string;
+  workflow_revision?: number;
   id: string;
   project_id: string;
   stage: GenerationStage;

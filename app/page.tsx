@@ -2,7 +2,8 @@
 import { OriginalPhoto } from "@/components/original-photo";
 import { PhotoSource } from "@/components/photo-source";
 import LandscapeDiscovery from '@/components/landscape-discovery';
-import CampaignWorkspace, {
+import CampaignFlow from "@/components/campaign-flow";
+import {
   CampaignHome,
 } from "@/components/campaign-workspace";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -181,7 +182,7 @@ export default function Studio() {
     [modelPacks, setModelPacks] = useState<ModelPack[]>([]),
     [projectId, setProjectId] = useState(""),
     [batches, setBatches] = useState<Batch[]>([]),
-    [view, setView] = useState("create"),
+    [view, setView] = useState("campaigns"),
     [loading, setLoading] = useState(true),
     [error, setError] = useState(""),
     [signIn, setSignIn] = useState(false),
@@ -299,7 +300,7 @@ export default function Studio() {
             "",
         );
         const params = new URLSearchParams(location.search);
-        const wantedView = params.get("view") ?? "create";
+        const wantedView = params.get("view") ?? (params.get("project") ? "campaign" : "campaigns");
         if (["create", "library", "campaigns", "campaign"].includes(wantedView))
           setView(wantedView);
         const wantedKind = params.get("kind");
@@ -334,14 +335,14 @@ export default function Studio() {
     if (loading || !projectId) return;
     const url = new URL(location.href);
     url.searchParams.set("project", projectId);
-    if (view === "create") url.searchParams.delete("view");
-    else url.searchParams.set("view", view);
+    url.searchParams.set("view", view);
     if (view === "library") url.searchParams.set("kind", libraryKind);
     else url.searchParams.delete("kind");
     history.replaceState(null, "", url);
   }, [loading, projectId, view, libraryKind]);
   useEffect(() => {
     const restore = (event: PopStateEvent) => {
+      window.dispatchEvent(new Event("studio:before-navigation"));
       const params = new URLSearchParams(location.search);
       const id = params.get("project");
       if (
@@ -353,7 +354,7 @@ export default function Studio() {
         event.stopImmediatePropagation();
         setProjectId(id!);
       }
-      const next = params.get("view") ?? "create";
+      const next = params.get("view") ?? (params.get("project") ? "campaign" : "campaigns");
       setView(
         ["create", "library", "campaigns", "campaign"].includes(next)
           ? next
@@ -1443,10 +1444,11 @@ export default function Studio() {
       </div>
     );
   function navigate(next: string) {
+    if (next === "inventory") { setLibraryKind("rv"); next = "library"; }
+    else if (next === "library") setLibraryKind("landscape");
     setView(next);
     const url = new URL(location.href);
-    if (next !== "create") url.searchParams.set("view", next);
-    else url.searchParams.delete("view");
+    url.searchParams.set("view", next);
     if (next === "library") url.searchParams.set("kind", libraryKind);
     else url.searchParams.delete("kind");
     if (url.toString() !== location.href) history.pushState(null, "", url);
@@ -1455,27 +1457,12 @@ export default function Studio() {
     return (
       <>
         <Toaster theme="system" richColors position="top-right" />
-        <CampaignWorkspace
-          key={project.id}
-          project={project}
-          assets={assets}
-          batches={batches}
-          modelPacks={modelPacks}
-          onNav={navigate}
-          onRefresh={refresh}
-          onBatch={(b) =>
-            setBatches((old) => [b, ...old.filter((x) => x.id !== b.id)])
-          }
-          onWizard={() => navigate("create")}
-          onPhotoshoot={async () => {
-            if (project.rv_id && project.landscape_id) await changeStage("compose");
-            setShootMode(true);
-            setShotIds(nextPhotoshootIds(batches).length ? nextPhotoshootIds(batches) : defaultPhotoshootIds);
-            const preset = getCampaignPreset(project.preset_id);
-            setBriefs(b => ({...b, compose: preset?.mode === "lifestyle" ? preset.composeBrief.split("Create two clearly different shots:")[0].trim() : photoshootContinuity}));
-            setEnhanced(e => ({...e, compose: undefined}));
-            navigate("create");
-          }}
+        <CampaignFlow
+          key={project.id} project={project} projects={projects} assets={assets}
+          batches={batches} modelPacks={modelPacks}
+          onNav={navigate} onRefresh={refresh}
+          onBatch={(b)=>setBatches(old=>[b,...old.filter(x=>x.id!==b.id)])}
+          onTools={()=>navigate("create")}
         />
       </>
     );
@@ -1500,7 +1487,7 @@ export default function Studio() {
               });
               setProjects((old) => [p, ...old]);
               setProjectId(p.id);
-              navigate("create");
+              navigate("campaign");
             } catch (e) {
               fail(e);
             }
@@ -1533,17 +1520,17 @@ export default function Studio() {
       <header className="topbar">
         <button
           className="brand"
-          onClick={() => navigate("create")}
+          onClick={() => navigate("campaigns")}
           aria-label="THOR Studio home"
         >
           <Mountain />
           THOR STUDIO
         </button>
         <nav aria-label="Main navigation">
-          {["library", "create", "campaigns"].map((v) => (
+          {["campaigns", "inventory", "library"].map((v) => (
             <button
               key={v}
-              className={view === v ? "active" : ""}
+              className={(v === "inventory" ? view === "library" && libraryKind === "rv" : v === "library" ? view === "library" && libraryKind !== "rv" : view === v) ? "active" : ""}
               onClick={() => {
                 navigate(v);
                 setQuery("");
@@ -1551,7 +1538,7 @@ export default function Studio() {
                 setTab("library");
               }}
             >
-              {v[0].toUpperCase() + v.slice(1)}
+              {{campaigns:"Campaigns",inventory:"RV Inventory",library:"Asset Library"}[v]}
             </button>
           ))}
         </nav>
