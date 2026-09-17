@@ -19,12 +19,11 @@ export type PhotoshootShot = {
 export const rvPresenceLabels = {full: "Full RV", partial: "Partial RV context", none: "Lifestyle only · no RV"} as const;
 export function defaultRvPresence(role: string): "full" | "partial" | "none" {
   if (["establishing", "hero-left", "hero-right", "product-profile"].includes(role)) return "full";
-  if (["detail", "action", "social-feed", "breakfast", "shared-table", "quiet-reading", "place-texture"].includes(role)) return "none";
   return "partial";
 }
 export function rvPresenceDirection(presence: "full" | "partial" | "none") {
   if (presence === "none") return "LIFESTYLE ONLY: no RV or motor vehicle anywhere in this frame, including backgrounds and reflections. Tell the campaign story through the people, activity, materials and setting. Remove motor vehicles visible in any reference; do not reconstruct or replace them. Bicycles explicitly requested for the activity are allowed. This visibility choice overrides any inherited instruction to show a vehicle.";
-  if (presence === "partial") return "PARTIAL RV CONTEXT: people and activity lead. At most a small cropped fragment of the supported RV wall appears, never a whole vehicle or front cap. Keep the photographed perspective and landmark proportions; if a faithful fragment cannot fit, leave the RV outside the frame rather than rotate or distort it.";
+  if (presence === "partial") return "PARTIAL RV CONTEXT: people and activity lead. Include a recognizable cropped portion of the selected RV as secondary context in every frame, never a whole vehicle or front cap. Keep the photographed perspective and landmark proportions. Reframe the people, activity and crop so a faithful portion remains visible; never omit, rotate or distort the RV to satisfy the shot. This visibility choice overrides inherited instructions to leave vehicles outside the frame.";
   return "FULL RV: one complete selected RV at natural environmental scale, preserving its photographed perspective and proportions. People and camp activity belong naturally around it. Do not invent another side or angle.";
 }
 
@@ -49,14 +48,14 @@ export const photoshootShots: PhotoshootShot[] = [
     id: 'detail', label: 'Small camp rituals', aspect: 'square_hd', format: 'Square · 1:1',
     camera: '85mm · tactile detail · shallow focus',
     summary: 'Hands, coffee, fabric and a small lived-in moment at camp.',
-    direction: 'SQUARE TACTILE LIFESTYLE DETAIL. Use an 85mm close lens, approximately f/4, at seated height. Photograph anatomically believable hands passing a ceramic mug or folding a camp blanket beside the curbside entry. Tight framing centers the action, fabric weave and ordinary material detail. Keep every vehicle outside this detail frame; use cloth, hands and the table surface as the entire composition. Preserve the reference wardrobe and restrained prop language. No full vehicle, wide camp tableau, added text or product redesign.',
+    direction: 'SQUARE TACTILE LIFESTYLE DETAIL. Use an 85mm close lens, approximately f/4, at seated height. Photograph anatomically believable hands passing a ceramic mug or folding a camp blanket beside the curbside entry. Tight framing centers the action, fabric weave and ordinary material detail. Let cloth, hands and the table surface dominate, with a narrow recognizable portion of the selected RV at the edge in the supported source perspective. Preserve the reference wardrobe and restrained prop language. No full vehicle, wide camp tableau, added text or product redesign.',
   },
   {
     category: 'people', usage: 'Editorial feature · activity story',
     id: 'action', label: 'Out for the day', aspect: 'landscape_4_3', format: 'Editorial · 4:3',
     camera: '35mm · off-center action · medium depth',
     summary: 'A walk, a bicycle or dogs in motion, caught between poses.',
-    direction: 'CANDID ACTION EDITORIAL. Use a 35mm lens, approximately f/5.6, at waist-to-chest height. Catch the reference cast walking diagonally through the foreground, handling bicycles if supported, or walking dogs if they appear in the reference. Use asymmetric framing with clear separation between limbs, wheels and leashes. Keep natural gestures, believable walking balance and purposeful gazes away from camera. Set this activity away from the parked RV, using the location, cast and wardrobe to connect it to the campaign. No vehicle in the frame. Avoid a lineup of people facing the lens.',
+    direction: 'CANDID ACTION EDITORIAL. Use a 35mm lens, approximately f/5.6, at waist-to-chest height. Catch the reference cast walking diagonally through the foreground, handling bicycles if supported, or walking dogs if they appear in the reference. Use asymmetric framing with clear separation between limbs, wheels and leashes. Keep natural gestures, believable walking balance and purposeful gazes away from camera. Stage this activity beside camp with a recognizable portion of the selected RV in the secondary background, preserving its supported source perspective. Avoid a lineup of people facing the lens.',
   },
   {
     category: 'perspectives', usage: 'Immersive web image · brochure spread',
@@ -103,7 +102,7 @@ export const photoshootShots: PhotoshootShot[] = [
     usage: "Social feed · paid social · carousel cover",
     camera: "50mm · waist-up interaction · shallow focus",
     summary: "A tight, vertical human moment designed for a feed.",
-    direction: "FEED-FIRST HUMAN MOMENT. Compose natively at 4:5 with a 50mm lens, f/2.8. Two reference adults share an amused glance as one passes a small snack at the camp table. Frame waist-up, with one clearly readable interaction against natural scenery, with no vehicle behind. Keep faces and hands away from crop edges, and use the source wardrobe and skin tones. Keep all RVs outside this human-focused composition. Avoid posed smiles, food advertising styling, duplicate limbs and extra people.",
+    direction: "FEED-FIRST HUMAN MOMENT. Compose natively at 4:5 with a 50mm lens, f/2.8. Two reference adults share an amused glance as one passes a small snack at the camp table. Frame waist-up, with one clearly readable interaction with a recognizable cropped portion of the selected RV behind them in its supported source perspective. Keep faces and hands away from crop edges, and use the source wardrobe and skin tones. Keep the RV secondary to the human interaction and visibly present. Avoid posed smiles, food advertising styling, duplicate limbs and extra people.",
   },
   {
     id: "story-vertical",
@@ -251,9 +250,9 @@ export function nextPhotoshootIds(batches: Batch[]) {
 
 export function shotFraming(role: string) {
   if (["detail", "breakfast", "place-texture"].includes(role))
-    return "TIGHT DETAIL: hands, material and the specific activity occupy at least 80% of the composition. No full RV, front cap, complete entry, wheels or broad sidewall. At most a narrow, defocused siding fragment at the edge (under 15% of the frame); leave the RV outside the frame if necessary. Do not back away to prove RV identity. Keep only the props essential to this activity.";
+    return "TIGHT DETAIL: hands, material and the specific activity occupy at least 80% of the composition. No full RV, front cap, complete entry, wheels or broad sidewall. At most a narrow, defocused siding fragment at the edge (under 15% of the frame); keep that supported fragment visible while preserving the tight activity crop. Do not back away to prove RV identity. Keep only the props essential to this activity.";
   if (["portrait", "social-feed", "quiet-reading", "fireside", "over-shoulder", "shared-table"].includes(role))
-    return "INTIMATE HUMAN FRAME: upper-body people and their interaction dominate at least 75% of the image. Crop at waist or chest rather than fitting full bodies and a whole camp chair. RV context is only a small defocused fragment of a supported wall at one edge (under 20% of the frame); no full front cap, complete doorway, wheel or vehicle silhouette. Omit the RV if a faithful fragment cannot fit. No foreground firepit or bicycle unless central to the assigned activity. Prefer absorbed gestures over matching broad smiles.";
+    return "INTIMATE HUMAN FRAME: upper-body people and their interaction dominate at least 75% of the image. Crop at waist or chest rather than fitting full bodies and a whole camp chair. RV context is only a small defocused fragment of a supported wall at one edge (under 20% of the frame); no full front cap, complete doorway, wheel or vehicle silhouette. Adjust the human framing to retain a faithful recognizable RV fragment. No foreground firepit or bicycle unless central to the assigned activity. Prefer absorbed gestures over matching broad smiles.";
   if (role === "product-detail")
     return "PRODUCT DETAIL: crop to one clearly observed feature with adjacent panel context. If the source lacks detail, widen only enough to show a supported panel. Never fabricate microtext or unseen fittings.";
   return "ENVIRONMENTAL FRAME: retain the requested activity, subject hierarchy and supported source view. Whole-RV coverage belongs to environmental/product roles, not every photograph. Keep visible ground contact and natural scale.";

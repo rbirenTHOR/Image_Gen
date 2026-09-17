@@ -184,7 +184,7 @@ test("Shot framing survives custom labels and role directions without sacrificin
 test("Lifestyle-only shots remove identity references, retain scene/cast, and invalidate only the changed shot", async () => {
   const {shotReferenceIndexes} = await import('../lib/campaign-flow.ts');
   const {lifestyleFramePrompt} = await import('../lib/lifestyle-frame.ts');
-  const s = {...state(),cast_reference_id:'cast',shots:[plannedShot('establishing'),plannedShot('detail')]};
+  const s = {...state(),cast_reference_id:'cast',shots:[plannedShot('establishing'),{...plannedShot('detail'),rv_presence:'none' as const}]};
   assert.deepEqual(shotReferenceIndexes(s,'establishing',5),[0,1,2,3,4]);
   assert.deepEqual(shotReferenceIndexes(s,'detail',5),[1,3,4]);
   const noOptional = {...s,identity_ids:[],prop_ids:[],cast_reference_id:null};
@@ -199,4 +199,21 @@ test("Lifestyle-only shots remove identity references, retain scene/cast, and in
   const changed = {...s.shots[1],rv_presence:'partial' as const};
   assert.equal(matchingShot(batch,changed,{...s,shots:[s.shots[0],changed]}),false);
   assert.equal(matchingShot(batch,s.shots[0],s),true);
+});
+
+
+test("Every default campaign role retains RV presence while lifestyle roles stay contextual", async () => {
+  const {photoshootShots, rvPresenceDirection, photoshootPrompt} = await import('../lib/photoshoot.ts');
+  const {resolvedShot} = await import('../lib/campaign-flow.ts');
+  for (const role of photoshootShots) assert.notEqual(plannedShot(role.id).rv_presence, 'none');
+  assert.equal(plannedShot('establishing').rv_presence, 'full');
+  for (const role of ['detail','action','social-feed']) {
+    const shot = plannedShot(role);
+    assert.equal(shot.rv_presence, 'partial');
+    assert.doesNotMatch(shot.direction, /No vehicle in the frame|Keep every vehicle outside|Keep all RVs outside/);
+    const prompt = photoshootPrompt(resolvedShot(shot), '', 'Preserve the source view.');
+    assert.match(prompt, /never omit, rotate or distort the RV/);
+    assert.doesNotMatch(prompt, /leave the RV outside|Omit the RV if/);
+  }
+  assert.match(rvPresenceDirection('partial'), /secondary context in every frame/);
 });

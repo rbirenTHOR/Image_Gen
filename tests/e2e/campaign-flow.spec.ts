@@ -809,7 +809,7 @@ test("Mixed lifestyle shoot routes references per shot and preserves the choice 
   const path = `/api/studio/projects/${p.id}/workflow`;
   let doc = await (await request.get(path,{headers})).json();
   doc.state = {...doc.state,rv_id:'sample-rv',scene_id:'mountain-stillness',cast_reference_id:'alpine-shoreline',setup:{mode:'custom',name:'Lifestyle'},
-    shots:['detail','establishing','portrait','action','social-feed','story-vertical'].map(plannedShot)};
+    shots:['detail','establishing','portrait','action','social-feed','story-vertical'].map(role => ({...plannedShot(role),rv_presence: ['detail','action','social-feed'].includes(role) ? 'none' : role === 'establishing' ? 'full' : 'partial'}))};
   doc = await (await request.put(path,{headers,data:doc})).json();
   const before = await control();
   const data = {id:crypto.randomUUID(),revision:doc.revision,shot_ids:doc.state.shots.map((s:{id:string})=>s.id)};
