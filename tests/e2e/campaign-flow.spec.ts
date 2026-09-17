@@ -745,7 +745,7 @@ test("Cast reference remains separate from RV evidence and every shot shares one
   const path = `/api/studio/projects/${p.id}/workflow`;
   let doc = await (await request.get(path,{headers})).json();
   doc.state = {...doc.state, rv_id:'sample-rv', scene_id:'mountain-stillness', cast_reference_id:'alpine-shoreline',
-    setup:{mode:'custom',name:'Cast test'}, shots:['establishing','portrait','detail'].map(plannedShot)};
+    setup:{mode:'custom',name:'Cast test'}, shots:['establishing','portrait','detail'].map(role => ({...plannedShot(role),rv_presence:'partial'}))};
   doc = await (await request.put(path,{headers,data:doc})).json();
   const baseline = await control();
   const data = {id:crypto.randomUUID(),revision:doc.revision,shot_ids:doc.state.shots.map((s:{id:string})=>s.id)};
@@ -797,4 +797,51 @@ test("Incomplete six-shot assessment retries with more room and submits images o
   expect(records.findIndex((r:{kind:string})=>r.kind==='image')).toBeGreaterThan(records.lastIndexOf(plans[1]));
   expect((await request.post(path+'/generate',{headers,data})).ok()).toBe(true);
   expect((await control()).records.slice(baseline.records.length).filter((r:{kind:string})=>r.kind==='image')).toHaveLength(6);
+});
+
+
+test("Mixed lifestyle shoot routes references per shot and preserves the choice on retry", async ({request}) => {
+  const headers = {Cookie:'__sites_local_auth=1'};
+  const control = async (data = {}) => (await request.post('http://127.0.0.1:6199/__control',{data})).json();
+  await control({delay:1,failSubmit:1,failPlan:0,incompletePlan:0,invalidView:false,mismatchedView:false,noGround:false});
+  await request.post('/api/studio/bootstrap',{headers,data:{}});
+  const p = await (await request.post('/api/studio/projects',{headers,data:{name:'Lifestyle visibility'}})).json();
+  const path = `/api/studio/projects/${p.id}/workflow`;
+  let doc = await (await request.get(path,{headers})).json();
+  doc.state = {...doc.state,rv_id:'sample-rv',scene_id:'mountain-stillness',cast_reference_id:'alpine-shoreline',setup:{mode:'custom',name:'Lifestyle'},
+    shots:['detail','establishing','portrait','action','social-feed','story-vertical'].map(plannedShot)};
+  doc = await (await request.put(path,{headers,data:doc})).json();
+  const before = await control();
+  const data = {id:crypto.randomUUID(),revision:doc.revision,shot_ids:doc.state.shots.map((s:{id:string})=>s.id)};
+  const r = await request.post(path+'/generate',{headers,data});
+  expect(r.ok(),await r.text()).toBe(true);
+  const b = await r.json();
+  const records = (await control()).records.slice(before.records.length);
+  const images = records.filter((r:{kind:string})=>r.kind==='image');
+  expect(images).toHaveLength(6);
+  const noRV = images.filter((r:{input:{prompt:string}})=>r.input.prompt.includes('ASSESSED LIFESTYLE DIRECTION'));
+  expect(noRV).toHaveLength(3);
+  for (const r of noRV) {
+    expect(r.input.image_urls).toHaveLength(2);
+    expect(r.input.prompt).not.toContain('RV SOURCE FOR THIS SHOT');
+    expect(r.input.prompt).not.toContain('PLACEMENT GEOMETRY');
+    expect(r.input.prompt).toContain('Image 2 is people and wardrobe only');
+  }
+  const hero = images.find((r:{input:{prompt:string}})=>r.input.prompt.includes('ASSIGNED SHOT — The whole escape'));
+  expect(hero.input.image_urls).toHaveLength(3);
+  expect(hero.input.prompt).toContain('FULL RV:');
+  for (const r of noRV) expect(r.input.image_urls).toEqual(hero.input.image_urls.slice(1));
+  const planner = records.find((r:{plan?:boolean})=>r.plan);
+  expect(planner.instructions).toContain('none means a complete vehicle-free lifestyle frame');
+  doc.state.shots = doc.state.shots.map((s: {id:string})=>({...s,rv_presence:'full'}));
+  await request.put(path,{headers,data:doc});
+  expect((await request.post(path+'/generate',{headers,data})).ok()).toBe(true);
+  expect((await control()).records.slice(before.records.length).filter((r:{kind:string})=>r.kind==='image')).toHaveLength(6);
+  const failed = b.jobs.find((j:Job)=>j.status==='failed');
+  expect(failed.shot_id).toBe('detail');
+  await control({failSubmit:0});
+  expect((await request.post(`/api/studio/jobs/${failed.id}/retry`,{headers,data:{}})).ok()).toBe(true);
+  const retry = (await control()).records.filter((r:{kind:string})=>r.kind==='image').at(-1);
+  expect(retry.input.image_urls).toHaveLength(2);
+  expect(retry.input.prompt).toBe(failed.generation_prompt);
 });

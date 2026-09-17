@@ -5,6 +5,8 @@ import { getAsset, getProject } from "./library";
 import { planComposition } from "./composition-plan";
 import { modelImages } from "./model-images";
 import { resolvePhotoshootShots, photoshootPrompt } from "@/lib/photoshoot";
+import { shotReferenceIndexes, type CampaignFlowState } from "@/lib/campaign-flow";
+import { lifestyleFramePrompt } from "@/lib/lifestyle-frame";
 import { getCampaignPreset } from "@/lib/campaign-presets";
 import {
   modelFor,
@@ -67,7 +69,7 @@ async function submitJob(job: StoredJob, b: StoredBatch, images: string[]) {
           b.stage,
           job.generation_prompt || buildPrompt(b.stage, b.prompt, job.slot),
           job.output_aspect || b.aspect,
-          images,
+          b.workflow_json ? shotReferenceIndexes(JSON.parse(b.workflow_json), job.shot_id || "", images.length).map(i => images[i]) : images,
         ),
       ),
     });
@@ -213,6 +215,7 @@ export async function startBatch(raw: unknown, owner: string, flow?: {shots: imp
           flow && JSON.parse(flow.snapshot).cast_reference_id ? images.length : 0,
         )
       : null;
+  const flowState: CampaignFlowState | undefined = flow ? JSON.parse(flow.snapshot) : undefined;
   const endpoint = modelFor(data.stage),
     now = Date.now();
   const statements = [
@@ -246,7 +249,9 @@ export async function startBatch(raw: unknown, owner: string, flow?: {shots: imp
         )
         .bind(ids[slot], data.id, slot, slot < initialCount ? "submitting" : "waiting", now, now,
           shootShots?.[slot].label ?? shots?.[slot].label ?? "",
-          buildPrompt(data.stage, data.prompt, slot,
+          flowState && shootShots?.[slot].rv_presence === "none"
+            ? lifestyleFramePrompt(flowState, flowState.shots.find(s => s.id === shootShots[slot].id)!, shots?.[slot].direction || shootShots[slot].direction)
+            : buildPrompt(data.stage, data.prompt, slot,
             shootShots ? photoshootPrompt(shootShots[slot], "", shots?.[slot].direction) : shots?.[slot].direction,
             lifestyleCompose, !!shootShots),
           shootShots?.[slot].id ?? "", shootShots?.[slot].aspect ?? data.aspect),

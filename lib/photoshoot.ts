@@ -13,7 +13,20 @@ export type PhotoshootShot = {
   category: string;
   usage: string;
   framing?: string;
+  rv_presence?: "full" | "partial" | "none";
 };
+
+export const rvPresenceLabels = {full: "Full RV", partial: "Partial RV context", none: "Lifestyle only · no RV"} as const;
+export function defaultRvPresence(role: string): "full" | "partial" | "none" {
+  if (["establishing", "hero-left", "hero-right", "product-profile"].includes(role)) return "full";
+  if (["detail", "action", "social-feed", "breakfast", "shared-table", "quiet-reading", "place-texture"].includes(role)) return "none";
+  return "partial";
+}
+export function rvPresenceDirection(presence: "full" | "partial" | "none") {
+  if (presence === "none") return "LIFESTYLE ONLY: no RV or motor vehicle anywhere in this frame, including backgrounds and reflections. Tell the campaign story through the people, activity, materials and setting. Remove motor vehicles visible in any reference; do not reconstruct or replace them. Bicycles explicitly requested for the activity are allowed. This visibility choice overrides any inherited instruction to show a vehicle.";
+  if (presence === "partial") return "PARTIAL RV CONTEXT: people and activity lead. At most a small cropped fragment of the supported RV wall appears, never a whole vehicle or front cap. Keep the photographed perspective and landmark proportions; if a faithful fragment cannot fit, leave the RV outside the frame rather than rotate or distort it.";
+  return "FULL RV: one complete selected RV at natural environmental scale, preserving its photographed perspective and proportions. People and camp activity belong naturally around it. Do not invent another side or angle.";
+}
 
 /** Each frame is generated at its own native dimensions, never cropped from a hero. */
 export const photoshootShots: PhotoshootShot[] = [
@@ -29,21 +42,21 @@ export const photoshootShots: PhotoshootShot[] = [
     id: 'portrait', label: 'A moment together', aspect: 'portrait_4_3', format: 'Portrait · 3:4',
     camera: '50mm · close human perspective · soft background',
     summary: 'A candid person or pet interaction, with the RV as intimate context.',
-    direction: 'VERTICAL HUMAN STORY. Use a 50mm lens at the subject\'s eye level, approximately f/2.8. Move close to one or two people sharing a specific unposed moment at the curbside camp: a quiet conversation, a mug passed between hands, or a person crouching to greet a dog when pets appear in the reference. People and the interaction dominate the frame. Feature only one adult with one dog when pets are part of the reference; otherwise feature two adults interacting. Let the rest of the cast stay outside this tight frame. Intentionally crop the RV to a recognizable section of its supported curbside wall or entry behind them; do not squeeze the entire RV into the portrait. Retain accurate visible markings and natural falloff in background detail. This is a new close camera position, not a vertical crop of the wide establishing shot.',
+    direction: 'VERTICAL HUMAN STORY. Use a 50mm lens at the subject\'s eye level, approximately f/2.8. Move close to one or two people sharing a specific unposed moment at the curbside camp: a quiet conversation, a mug passed between hands, or a person crouching to greet a dog when pets appear in the reference. People and the interaction dominate the frame. Feature only one adult with one dog when pets are part of the reference; otherwise feature two adults interacting. Let the rest of the cast stay outside this tight frame. Intentionally crop the RV to a recognizable section of its supported curbside wall or entry behind them; do not squeeze the entire RV into the portrait. Retain accurate visible markings and natural falloff in background detail. Keep any visible RV fragment in its photographed perspective; express intimacy through cropping and subject scale.',
   },
   {
     category: 'rituals', usage: 'Carousel detail · email tile · social square',
     id: 'detail', label: 'Small camp rituals', aspect: 'square_hd', format: 'Square · 1:1',
     camera: '85mm · tactile detail · shallow focus',
     summary: 'Hands, coffee, fabric and a small lived-in moment at camp.',
-    direction: 'SQUARE TACTILE LIFESTYLE DETAIL. Use an 85mm close lens, approximately f/4, at seated height. Photograph anatomically believable hands passing a ceramic mug or folding a camp blanket beside the curbside entry. Tight framing centers the action, fabric weave and ordinary material detail. Only a partial, accurately rendered portion of the RV is visible as contextual background. Preserve the reference wardrobe and restrained prop language. No full vehicle, wide camp tableau, added text or product redesign.',
+    direction: 'SQUARE TACTILE LIFESTYLE DETAIL. Use an 85mm close lens, approximately f/4, at seated height. Photograph anatomically believable hands passing a ceramic mug or folding a camp blanket beside the curbside entry. Tight framing centers the action, fabric weave and ordinary material detail. Keep every vehicle outside this detail frame; use cloth, hands and the table surface as the entire composition. Preserve the reference wardrobe and restrained prop language. No full vehicle, wide camp tableau, added text or product redesign.',
   },
   {
     category: 'people', usage: 'Editorial feature · activity story',
     id: 'action', label: 'Out for the day', aspect: 'landscape_4_3', format: 'Editorial · 4:3',
     camera: '35mm · off-center action · medium depth',
     summary: 'A walk, a bicycle or dogs in motion, caught between poses.',
-    direction: 'CANDID ACTION EDITORIAL. Use a 35mm lens, approximately f/5.6, at waist-to-chest height. Catch the reference cast walking diagonally through the foreground, handling bicycles if supported, or walking dogs if they appear in the reference. Use asymmetric framing with clear separation between limbs, wheels and leashes. Keep natural gestures, believable walking balance and purposeful gazes away from camera. The RV occupies a secondary midground plane with correct supported curbside geometry. Avoid a lineup of people facing the lens.',
+    direction: 'CANDID ACTION EDITORIAL. Use a 35mm lens, approximately f/5.6, at waist-to-chest height. Catch the reference cast walking diagonally through the foreground, handling bicycles if supported, or walking dogs if they appear in the reference. Use asymmetric framing with clear separation between limbs, wheels and leashes. Keep natural gestures, believable walking balance and purposeful gazes away from camera. Set this activity away from the parked RV, using the location, cast and wardrobe to connect it to the campaign. No vehicle in the frame. Avoid a lineup of people facing the lens.',
   },
   {
     category: 'perspectives', usage: 'Immersive web image · brochure spread',
@@ -90,7 +103,7 @@ export const photoshootShots: PhotoshootShot[] = [
     usage: "Social feed · paid social · carousel cover",
     camera: "50mm · waist-up interaction · shallow focus",
     summary: "A tight, vertical human moment designed for a feed.",
-    direction: "FEED-FIRST HUMAN MOMENT. Compose natively at 4:5 with a 50mm lens, f/2.8. Two reference adults share an amused glance as one passes a small snack at the camp table. Frame waist-up, with one clearly readable interaction and a recognizable partial curbside RV wall behind. Keep faces and hands away from crop edges, and use the source wardrobe and skin tones. The wall is contextual, not an invented doorway. No full RV squeezed into the portrait. Avoid posed smiles, food advertising styling, duplicate limbs and extra people.",
+    direction: "FEED-FIRST HUMAN MOMENT. Compose natively at 4:5 with a 50mm lens, f/2.8. Two reference adults share an amused glance as one passes a small snack at the camp table. Frame waist-up, with one clearly readable interaction against natural scenery, with no vehicle behind. Keep faces and hands away from crop edges, and use the source wardrobe and skin tones. Keep all RVs outside this human-focused composition. Avoid posed smiles, food advertising styling, duplicate limbs and extra people.",
   },
   {
     id: "story-vertical",
@@ -249,5 +262,5 @@ export function shotFraming(role: string) {
 export const photoshootContinuity = 'Treat this as one location shoot. Use image 1 for the exact RV identity and image 2 for place, source palette, light direction, cast styling, wardrobe and props. Preserve the identity and clothing of each reference person who appears, plus weather and location across frames. The assigned shot decides who is in frame: the complete cast and pets do not need to appear in every image. Keep unrequested cast outside the frame for solo portraits, details and product coverage. Prefer activities and animals supported by the reference; do not add pets or children unless requested or visible there. Vary framing, human activity, subject scale and depth of field within the assessed RV view limits. Crop the vehicle intentionally for intimate shots while preserving all visible geometry and graphics; do not invent unsupported interiors or unseen sides. Treat the entry door, windows, slide-outs, badges and compartments as fixed architectural landmarks: never relocate, resize or reorder them to fit the frame. Keep the door closed if the RV identity photo shows it closed. Crop different landmarks out instead of compressing the vehicle or moving its entry toward the front cap. No staged smiles or stock-photo posing. Each output is one photograph.';
 
 export function photoshootPrompt(shot: PhotoshootShot, brief: string, assessment?: string) {
-  return `${photoshootContinuity}\n\n${brief ? `CAMPAIGN DIRECTION\n${brief}\n\n` : ''}ASSIGNED SHOT — ${shot.label}\nIntended use: ${shot.usage}.\nNative output: ${shot.format}.\n${shot.direction}\nThis assigned shot controls framing, subject hierarchy and action only within the assessed RV view limits. The source evidence overrides unsupported camera or angle requests. Render only this shot, not other shots mentioned in the campaign direction. Match the source palette and lighting; use natural skin, credible anatomy and physical ground contact. No collage or split screen.\n\n${assessment ? `FINAL RV VIEW CONTRACT\n${assessment}` : rvViewGuard}\n\nFINAL FRAMING REQUIREMENT\n${shot.framing || shotFraming(shot.id)}`;
+  return `${photoshootContinuity}\n\n${brief ? `CAMPAIGN DIRECTION\n${brief}\n\n` : ''}ASSIGNED SHOT — ${shot.label}\nIntended use: ${shot.usage}.\nNative output: ${shot.format}.\n${assessment ? "Follow the assessed shot direction below." : shot.direction}\nThis assigned shot controls framing, subject hierarchy and action only within the assessed RV view limits. The source evidence overrides unsupported camera or angle requests. Render only this shot, not other shots mentioned in the campaign direction. Match the source palette and lighting; use natural skin, credible anatomy and physical ground contact. No collage or split screen.\n\n${assessment ? `FINAL RV VIEW CONTRACT\n${assessment}` : rvViewGuard}\n\nFINAL FRAMING REQUIREMENT\n${shot.framing || shotFraming(shot.id)}\n${shot.rv_presence ? rvPresenceDirection(shot.rv_presence) : ""}`;
 }

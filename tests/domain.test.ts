@@ -379,7 +379,8 @@ test('Placement and lifestyle photoshoots both retain scene integration without 
     assert.equal(prompt.split(brief).length - 1, 1);
     assert.equal(prompt.split(assessment).length - 1, 1);
     if (lifestyle) {
-      assert.match(prompt, /VERTICAL HUMAN STORY/);
+      assert.match(prompt, /ASSIGNED SHOT — A moment together/);
+      assert.doesNotMatch(prompt, /This is a new close camera position/);
       assert.match(prompt, /source evidence overrides unsupported camera/);
       assert.doesNotMatch(prompt, /Keep the backdrop camera and horizon fixed/);
     }

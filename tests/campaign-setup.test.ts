@@ -179,3 +179,24 @@ test("Shot framing survives custom labels and role directions without sacrificin
   assert.match(prompt, /Never rotate, mirror/);
   assert.match(photoshootPrompt(resolvedShot(plannedShot('portrait')), ''), /upper-body people/);
 });
+
+
+test("Lifestyle-only shots remove identity references, retain scene/cast, and invalidate only the changed shot", async () => {
+  const {shotReferenceIndexes} = await import('../lib/campaign-flow.ts');
+  const {lifestyleFramePrompt} = await import('../lib/lifestyle-frame.ts');
+  const s = {...state(),cast_reference_id:'cast',shots:[plannedShot('establishing'),plannedShot('detail')]};
+  assert.deepEqual(shotReferenceIndexes(s,'establishing',5),[0,1,2,3,4]);
+  assert.deepEqual(shotReferenceIndexes(s,'detail',5),[1,3,4]);
+  const noOptional = {...s,identity_ids:[],prop_ids:[],cast_reference_id:null};
+  assert.deepEqual(shotReferenceIndexes(noOptional,'detail',2),[1]);
+  const legacy = {...s,shots:s.shots.map(original => { const shot = {...original}; delete shot.rv_presence; return shot; })};
+  assert.deepEqual(shotReferenceIndexes(legacy,'detail',5),[0,1,2,3,4]);
+  const prompt = lifestyleFramePrompt(s,s.shots[1],'Hands folding a blanket in soft light.');
+  assert.match(prompt,/Image 1 is the source campaign photograph/);
+  assert.match(prompt,/Image 3 is people and wardrobe only/);
+  assert.doesNotMatch(prompt,/PLACEMENT GEOMETRY|FINAL RV VIEW CONTRACT|Image 1 is the exact RV/);
+  const batch = {workflow_json:JSON.stringify(s)} as Parameters<typeof matchingShot>[0];
+  const changed = {...s.shots[1],rv_presence:'partial' as const};
+  assert.equal(matchingShot(batch,changed,{...s,shots:[s.shots[0],changed]}),false);
+  assert.equal(matchingShot(batch,s.shots[0],s),true);
+});

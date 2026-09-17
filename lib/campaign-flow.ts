@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { photoshootShots, shotFraming, type PhotoshootShot } from "./photoshoot.ts";
+import { photoshootShots, shotFraming, defaultRvPresence, type PhotoshootShot } from "./photoshoot.ts";
 import type { Batch } from "./domain";
 export const flowSections = ["rv", "scene", "plan", "results"] as const;
 export const aspectOptions = [
@@ -24,6 +24,7 @@ const shotSchema = z
       "portrait_9_16",
     ]),
     direction: z.string().max(4000),
+    rv_presence: z.enum(["full", "partial", "none"]).optional(),
   })
   .strict();
 // A setup is copied as one unit. Its source revision is provenance, never a live link.
@@ -95,6 +96,7 @@ export function plannedShot(role: string): PlannedShot {
     label: s.label,
     aspect: s.aspect,
     direction: s.direction,
+    rv_presence: defaultRvPresence(s.id),
   };
 }
 export const shootPackages = [
@@ -164,6 +166,7 @@ export function resolvedShot(
     format: aspectOptions.find(([key]) => key === s.aspect)![1],
     usage: s.role === "custom" ? "Custom campaign deliverable" : base.usage,
     framing: shotFraming(s.role),
+    rv_presence: s.rv_presence,
     direction:
       s.direction +
       `\nCompose specifically for ${aspectOptions.find(([key]) => key === s.aspect)![1]}. This chosen image shape overrides any generic orientation mentioned in the role above.` +
@@ -205,7 +208,7 @@ export const lifestyleSetups = [
     name: "Mountain retreat",
     match: "Jayco North Point lifestyle setup",
     brief:
-      "A quiet mountain retreat. Borrow the source shoot’s wooded field, muted green palette, soft daylight, relaxed wardrobe and candid editorial character. Keep real skin and fabric texture, accurate ground contact and restrained reflections. Vary scale and camera viewpoint throughout the shoot.",
+      "A quiet mountain retreat. Borrow the source shoot’s wooded field, muted green palette, soft daylight, relaxed wardrobe and candid editorial character. Keep real skin and fabric texture, accurate ground contact and restrained reflections. Vary activities and framing throughout the shoot. Include the selected RV only in roles that call for it; keep its photographed view when visible.",
     people:
       "Two adults relaxing at camp, sharing coffee or reading. Only the people relevant to each frame should appear. No children or pets.",
     props:
@@ -316,4 +319,12 @@ export function customizeSetup(state: CampaignFlowState): CampaignFlowState {
           : "Previous custom setup",
     },
   };
+}
+
+/** Use the immutable shot snapshot on submission AND retries. Legacy shots keep all inputs. */
+export function shotReferenceIndexes(state: CampaignFlowState, shotId: string, inputCount: number) {
+  const indexes = Array.from({length: inputCount}, (_, i) => i);
+  if (state.shots.find(s => s.id === shotId)?.rv_presence !== "none") return indexes;
+  // Batch order: RV, scene, supporting RV views, objects, cast. Only remove RV identity images.
+  return indexes.filter(i => i === 1 || i >= 2 + state.identity_ids.length);
 }

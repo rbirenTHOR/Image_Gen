@@ -32,7 +32,7 @@ import {
   type FlowDocument,
   type PlannedShot,
 } from "@/lib/campaign-flow";
-import { photoshootShots } from "@/lib/photoshoot";
+import { photoshootShots, rvPresenceLabels } from "@/lib/photoshoot";
 import "./campaign-flow.css";
 async function call<T>(
   path: string,
@@ -1074,7 +1074,7 @@ function FlowEditor({ initial, ...p }: Props & { initial: FlowDocument }) {
                       <p>
                         {photoshootShots.find((x) => x.id === s.role)?.usage ||
                           "Custom campaign deliverable"}{" "}
-                        · {generationSizeLabel(s.aspect)}
+                        · {generationSizeLabel(s.aspect)} · {s.rv_presence ? rvPresenceLabels[s.rv_presence] : "RV visibility from saved direction"}
                       </p>
                       <details>
                         <summary>Edit shot direction & format</summary>
@@ -1106,6 +1106,15 @@ function FlowEditor({ initial, ...p }: Props & { initial: FlowDocument }) {
                                   {label}
                                 </option>
                               ))}
+                            </select>
+                          </label>
+                          <label className="flow-field">
+                            RV in this shot
+                            <select aria-label={`RV visibility for ${s.label}`} disabled={busy}
+                              value={s.rv_presence || ""}
+                              onChange={e => shotUpdate(s.id, {rv_presence: e.target.value as PlannedShot["rv_presence"]})}>
+                              {!s.rv_presence && <option value="" disabled>From saved direction</option>}
+                              {Object.entries(rvPresenceLabels).map(([value,label]) => <option key={value} value={value}>{label}</option>)}
                             </select>
                           </label>
                           <label className="flow-field flow-full">
