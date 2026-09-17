@@ -207,6 +207,7 @@ const provider = createServer(async (req, res) => {
         kind: "chat",
         plan: requestInput.text?.format?.name === "rv_composition_plan",
         instructions: requestInput.instructions,
+        referenceLabels: requestInput.input?.flatMap(m => Array.isArray(m.content) ? m.content.filter(c => c.type === "input_text").map(c => c.text) : []) || [],
         requestedCount: requestInput.text?.format?.schema?.properties?.shots?.maxItems,
         at: Date.now(),
         visionDetails: Array.isArray(requestInput.input)
@@ -230,7 +231,21 @@ const provider = createServer(async (req, res) => {
       const plan = input.text?.format?.name === "rv_composition_plan";
       if (plan && controls.incompletePlan) { controls.incompletePlan--; return json({status:'incomplete',output:[]}); }
       if (plan && controls.failPlan) return json({error:"Planning unavailable"},503);
-      const text = plan ? JSON.stringify({feasible:!controls.noGround,reason:controls.noGround?"Choose a landscape with visible level ground.":"",shots: (controls.noGround?[]:["Natural ground fit", "Alternate position", "Nearer contact", "Deeper contact"].slice(0,input.text.format.schema.properties.shots.maxItems)).map((label,i)=>({label,direction: `Shot ${i+1}: ${label}. Place the entire RV at horizontal center ${[25,70,45,55][i]} percent, width ${[20,32,48,13][i]} percent, on the visible level gravel clearing. Keep its visible side, backdrop camera and horizon, vegetation and source texture unchanged; match wheel contact and daylight shadows.`}))}) : input.text?.format
+      const hasViews = !!input.text?.format?.schema?.properties?.views;
+      const identityRefs = hasViews ? [1, ...Array.from({length: input.text.format.schema.properties.views.maxItems - 1}, (_, i) => i + 3)] : [];
+      const text = plan ? JSON.stringify({
+        feasible: !controls.noGround, reason: controls.noGround ? "Choose a landscape with visible level ground." : "",
+        ...(hasViews ? {views: identityRefs.map(reference => ({reference, usable: reference === 1 || !controls.mismatchedView,
+          visible_view: reference === 1 ? "Curbside front three-quarter at source camera height." : "Curbside rear three-quarter at source camera height.",
+          fixed_landmarks: "Door behind the front window; fixed wheelbase and body proportions.",
+          limitations: "No unseen side, roof reconstruction or opening the closed door."}))} : {}),
+        shots: controls.noGround ? [] : Array.from({length: input.text.format.schema.properties.shots.maxItems}, (_, i) => ({
+          label: `Supported shot ${i + 1}`,
+          direction: `Shot ${i + 1}: Frame a distinct candid activity on the visible level gravel clearing. Keep the chosen source RV perspective and fixed landmark spacing, and match wheel contact and daylight shadows.`,
+          ...(hasViews ? {source_reference: controls.invalidView ? 2 : identityRefs.length > 1 && !controls.mismatchedView && i % 2 ? 3 : 1,
+            adaptation: "Retain source RV camera elevation; vary foreground activity and crop the supported wall for intimate frames."} : {})
+        }))
+      }) : input.text?.format
         ? JSON.stringify({
             reply:
               "Keep the RV and framing, and soften the afternoon light. The prompt below is ready to refine before generating.",

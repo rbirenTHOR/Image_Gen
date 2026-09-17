@@ -126,13 +126,13 @@ export function flowPrompt(s: CampaignFlowState) {
     s.brief ||
       "Create a professional RV lifestyle campaign with natural color and candid photographic moments.",
     s.scene_mode === "place"
-      ? "Preserve the reference location, terrain, lighting and camp arrangement. Camera positions can vary within this same physical place."
-      : "Use the scene reference for its photographic aesthetic, natural color, lighting, environment and lifestyle. Compose distinct camera positions and varied framing.",
+      ? "Preserve the reference location, terrain, lighting and camp arrangement. Vary framing within the RV views supported by its photos."
+      : "Use the scene reference for its photographic aesthetic, natural color, lighting, environment and lifestyle. Compose varied framing without inventing new RV views.",
     `People and activity: ${s.people || "Use the scene reference as casting guidance; feature only the people needed for each shot."}`,
     `Props and styling: ${s.props || "Use restrained, believable camp details from the scene reference."}`,
     "Reference 1 defines the selected RV identity; reference 2 defines the scene/look only. Never copy the RV from reference 2. People and props in the RV identity image are not casting requirements.",
     s.identity_ids.length
-      ? "Reference 3 is additional identity evidence for the same RV, not a scene or casting reference."
+      ? "Reference 3 is candidate additional identity evidence. Verify it matches the same RV before using its photographed angle; a detail crop or duplicate does not establish a new view."
       : "",
     s.prop_ids.length
       ? `Reference ${3 + s.identity_ids.length} defines a requested object only; preserve its design without copying its background.`

@@ -21,9 +21,9 @@ function mediaURL(value: string) {
   return url.toString();
 }
 
-/** Large references use streamed, expiring fal uploads so four Max requests
+/** Large references use streamed, expiring fal uploads so parallel requests
  * never duplicate multiple full-resolution base64 images in Worker memory. */
-export async function modelImages(ids: string[], owner: string) {
+export async function modelImages(ids: string[], owner: string, remoteOnly = false) {
   const images: string[] = [];
   for (const id of ids) {
     const asset = await getAsset(id, owner);
@@ -33,7 +33,7 @@ export async function modelImages(ids: string[], owner: string) {
       if (optimized) { await object.body.cancel(); object = optimized; }
     }
     if (!object) throw new ApiError(503, "A source image could not be loaded.");
-    if (object.size <= 2 * 1024 * 1024) {
+    if (!remoteOnly && object.size <= 2 * 1024 * 1024) {
       await object.body.cancel();
       images.push(await assetDataURI(id, owner));
       continue;
@@ -107,7 +107,7 @@ export async function modelImages(ids: string[], owner: string) {
         await compressed.body?.cancel();
         throw new ApiError(503, 'The optimized reference could not be saved. Please retry.');
       }
-      let signature: number[] = [];
+      const signature: number[] = [];
       const validated = compressed.body.pipeThrough(new TransformStream<Uint8Array,Uint8Array>({
         transform(chunk, controller) {
           for (const byte of chunk.subarray(0, Math.max(0, 3-signature.length))) signature.push(byte);

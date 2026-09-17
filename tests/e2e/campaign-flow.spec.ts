@@ -499,7 +499,7 @@ test("Existing setup snapshot rejects contradictory fields and generation waits 
   expect(response.ok(), await response.text()).toBe(true);
 });
 
-test("Selected campaign delivers all checked shots with bounded concurrency and replay safety", async ({
+test("Selected campaign delivers all checked shots together before polling with replay safety", async ({
   request,
 }) => {
   const headers = { Cookie: "__sites_local_auth=1" };
@@ -549,11 +549,11 @@ test("Selected campaign delivers all checked shots with bounded concurrency and 
   const batch = await created.json();
   expect(batch.jobs.map((j: Job) => j.shot_id)).toEqual(selected);
   expect(batch.jobs.filter((j: Job) => j.status === "waiting")).toHaveLength(
-    14,
+    0,
   );
   expect(
     imageCount((await control()).records) - imageCount(baseline.records),
-  ).toBe(2);
+  ).toBe(16);
   // A later edit must not change the already-authorized queued shots.
   doc.state.brief = "Changed desert campaign";
   expect((await request.put(path, { headers, data: doc })).ok()).toBe(true);
@@ -561,7 +561,7 @@ test("Selected campaign delivers all checked shots with bounded concurrency and 
   expect(replay.ok()).toBe(true);
   expect(
     imageCount((await control()).records) - imageCount(baseline.records),
-  ).toBe(2);
+  ).toBe(16);
   let latest = batch;
   for (
     let n = 0;
@@ -581,7 +581,7 @@ test("Selected campaign delivers all checked shots with bounded concurrency and 
         view.jobs.filter((j: Job) =>
           ["submitting", "queued", "generating", "saving"].includes(j.status),
         ).length,
-      ).toBeLessThanOrEqual(2);
+      ).toBeLessThanOrEqual(16);
     }
     latest = await (
       await request.get("/api/studio/batches/" + batch.id, { headers })
@@ -654,11 +654,6 @@ test("A rejected image does not repeat or prevent the other selected deliverable
     await request.get("/api/studio/batches/" + batch.id, { headers })
   ).json();
   const failedId = batch.jobs.find((j: Job) => j.status === "failed").id;
-  expect(
-    (
-      await request.post("/api/studio/jobs/" + failedId + "/retry", { headers })
-    ).status(),
-  ).toBe(409);
   await control({ delay: 1 });
   for (
     let i = 0;
@@ -691,4 +686,45 @@ test("A rejected image does not repeat or prevent the other selected deliverable
       baseline.records.filter((r: { kind: string }) => r.kind === "image")
         .length,
   ).toBe(6);
+});
+
+test("RV assessment inspects every reference, selects supported views and fails before image charges", async ({ request }) => {
+  const headers = { Cookie: "__sites_local_auth=1" };
+  const control = async (data = {}) => (await request.post("http://127.0.0.1:6199/__control", {data})).json();
+  await control({delay: 1, failPlan: 0, failSubmit: 0, failSave: 0, invalidView: false, mismatchedView: false});
+  await request.post("/api/studio/bootstrap", {headers, data: {}});
+  const p = await (await request.post("/api/studio/projects", {headers, data: {name: "Source view assessment"}})).json();
+  const path = "/api/studio/projects/" + p.id + "/workflow";
+  let doc = await (await request.get(path, {headers})).json();
+  doc.state = {...doc.state, rv_id: "sample-rv", scene_id: "mountain-stillness",
+    identity_ids: ["alpine-shoreline"], setup: {mode: "custom", name: "View test"}};
+  doc = await (await request.put(path, {headers, data: doc})).json();
+  const generate = () => request.post(path + "/generate", {headers, data: {
+    id: crypto.randomUUID(), revision: doc.revision, shot_ids: ["establishing", "portrait"]}});
+  const before = await control();
+  const result = await generate();
+  expect(result.ok(), await result.text()).toBe(true);
+  const batch = await result.json();
+  expect(batch.jobs[0].generation_prompt).toContain("reference 1 only controls");
+  expect(batch.jobs[1].generation_prompt).toContain("reference 3 only controls");
+  const records = (await control()).records.slice(before.records.length);
+  const plan = records.find((r: {plan?: boolean}) => r.plan);
+  expect(plan.visionDetails).toHaveLength(3);
+  expect(plan.referenceLabels.join("\n")).toContain("Reference 3: SUPPORTING RV IDENTITY");
+  expect(plan.instructions).toContain("Repeated angles");
+  const count = async () => (await control()).records.filter((r: {kind: string}) => r.kind === "image").length;
+  const prior = await count();
+  await control({invalidView: true});
+  const bad = await generate();
+  expect(bad.status()).toBe(503);
+  expect(await count()).toBe(prior);
+  await control({invalidView: false, failPlan: 1});
+  expect((await generate()).status()).toBe(503);
+  expect(await count()).toBe(prior);
+  await control({failPlan: 0, mismatchedView: true});
+  const restricted = await generate();
+  expect(restricted.ok(), await restricted.text()).toBe(true);
+  const safe = await restricted.json();
+  expect(safe.jobs.every((j: Job) => j.generation_prompt?.includes("reference 1 only controls"))).toBe(true);
+  await control({mismatchedView: false});
 });

@@ -287,6 +287,7 @@ function FlowEditor({ initial, ...p }: Props & { initial: FlowDocument }) {
   async function upload(
     file: File | undefined,
     kind: "rv" | "landscape" | "prop",
+    supporting = false,
   ) {
     if (!file) return;
     setBusy(true);
@@ -302,7 +303,7 @@ function FlowEditor({ initial, ...p }: Props & { initial: FlowDocument }) {
       await p.onRefresh();
       patch(
         kind === "rv"
-          ? { rv_id: a.id, identity_ids: [] }
+          ? supporting ? { identity_ids: [a.id] } : { rv_id: a.id, identity_ids: [] }
           : kind === "landscape"
             ? startCustomSetup(state, a.id)
             : { prop_ids: [a.id] },
@@ -499,7 +500,7 @@ function FlowEditor({ initial, ...p }: Props & { initial: FlowDocument }) {
                     rv: "Start with one real unit. Its photographs define the vehicle in every image.",
                     scene:
                       "Reuse a complete shoot setup, or create a custom setting and direction.",
-                    plan: "Choose the deliverables you need. Each shot has its own framing, purpose and native image shape.",
+                    plan: "Choose the deliverables you need. Each shot has its own framing, purpose and image shape. Camera angles adapt to the views your RV photos support.",
                     results:
                       "Every generated image is kept as a draft. Review identity, lifestyle and framing before approval.",
                   }[state.section]
@@ -595,14 +596,29 @@ function FlowEditor({ initial, ...p }: Props & { initial: FlowDocument }) {
                   />
                 ))}
               </div>
-              {!!state.identity_ids.length && (
-                <p>
-                  Additional identity reference attached from the selected RV
-                  pack.{" "}
-                  <button onClick={() => patch({ identity_ids: [] })}>
-                    Remove
-                  </button>
-                </p>
+              {state.rv_id && (
+                <div className="flow-setup-summary">
+                  <strong>{state.identity_ids.length ? "RV views will be checked together" : "Single RV photo: preserve its photographed view"}</strong>
+                  <p>Shot variety comes from framing, people, activity and image shape. New RV angles require a matching photo of this exact unit. Duplicate views and detail crops do not unlock unseen sides.</p>
+                  <label className="flow-field">
+                    Additional photo of this exact RV (optional)
+                    <select aria-label="Additional RV view" disabled={busy}
+                      value={state.identity_ids[0] || ""}
+                      onChange={e => patch({identity_ids: e.target.value ? [e.target.value] : []})}>
+                      <option value="">Use the primary photo only</option>
+                      {p.assets.filter(a => a.id !== state.rv_id && a.id !== state.scene_id &&
+                        ((a.kind === "rv" && !referenceOnlyIds.has(a.id)) || state.identity_ids.includes(a.id))).map(a =>
+                        <option key={a.id} value={a.id}>{a.name}</option>)}
+                    </select>
+                  </label>
+                  <label className="flow-upload">
+                    Upload another view of this RV
+                    <input aria-label="Upload additional RV view" type="file"
+                      accept="image/jpeg,image/png,image/webp" disabled={busy}
+                      onChange={e => void upload(e.target.files?.[0], "rv", true)} />
+                  </label>
+                  {!!state.identity_ids.length && <p>The planner checks whether the additional photo supports the same unit and angle. Uncertain or conflicting views are excluded from its shot directions.</p>}
+                </div>
               )}
             </>
           )}
@@ -1273,9 +1289,9 @@ function FlowEditor({ initial, ...p }: Props & { initial: FlowDocument }) {
               </div>
               {running && (
                 <p role="status">
-                  Your selected photos are being developed automatically.
-                  Progress is saved; any remaining photos resume when you
-                  return.
+                  Your selected photos are submitted together. The image provider
+                  queues and renders them as capacity becomes available.
+                  Progress is saved when you return.
                 </p>
               )}
               <div className="flow-results">

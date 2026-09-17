@@ -138,3 +138,18 @@ test("Old outputs remain matched after metadata-only customization, but not a se
     false,
   );
 });
+
+test("RV evidence cannot unlock a scene image, a missing view or an unverified unit", async () => {
+  const {assessedViewDirections} = await import("../lib/rv-view-coverage.ts");
+  const view = (reference: number, usable = true) => ({reference, usable,
+    visible_view: "Front curbside three-quarter view",
+    fixed_landmarks: "Door and window positions relative to the axles",
+    limitations: "No unseen rear or opposite side is supported"});
+  const shot = (source_reference: number) => ({source_reference, adaptation: "Crop the supported wall and retain source perspective"});
+  assert.match(assessedViewDirections({views: [view(1)], shots: [shot(1)]}, 0, 1)[0], /reference 1 only/);
+  assert.throws(() => assessedViewDirections({views: [view(1)], shots: [shot(2)]}, 0, 1));
+  assert.throws(() => assessedViewDirections({views: [view(1)], shots: [shot(3)]}, 1, 1));
+  assert.throws(() => assessedViewDirections({views: [view(1), view(3, false)], shots: [shot(3)]}, 1, 1));
+  assert.match(assessedViewDirections({views: [view(1), view(3)], shots: [shot(3)]}, 1, 1)[0], /reference 3 only/);
+  assert.throws(() => assessedViewDirections({views: [view(1), view(1)], shots: [shot(1)]}, 1, 1));
+});
