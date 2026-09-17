@@ -10,6 +10,34 @@ Select several gallery pictures with their checkboxes to save them together or a
 
 Campaign chat uses Sunburst Max for all image operations, including people when requested. A reference-backed variation uses the fal edit endpoint; a new image uses text-to-image. Chat planning uses the existing OpenAI text connection. It never submits image generation automatically. Each generated image has its own source lineage and can be saved, inspected, approved and downloaded without changing the wizard's current take. The wizard remains available through Build a scene / Create.
 
+### Preconfigured campaign setups
+
+**Campaigns → New campaign** opens a setup chooser. A setup can preload the approved RV, the Jayco source photograph used as the visual reference, the aspect ratio, a production brief and an authored shot list. The Eagle setups use the official 2026 Eagle fifth-wheel exterior as the sole product identity. North Point, Centurion and Condor photographs supply the setting, light, palette, camera language, wardrobe, activity and restrained prop styling; any different RV in the reference is replaced rather than blended with the Eagle.
+
+Open a campaign and choose **Plan photoshoot** to build an 18-shot library covering campaign heroes, candid people and activity, camp rituals, intimate viewpoints, supported product views, atmosphere, and social/mobile. Nine suggested pairs prepare purposeful passes, while category filters let you mix individual shots. Native formats include 16:9, 4:3, 1:1, 3:4, 4:5 feed, and 9:16 Stories. Each card explains its intended use. Select one or two shots per pass to control provider cost. Each shot has its own camera distance, lens/depth treatment, narrative role and native output dimensions, so a portrait is composed as a portrait rather than cropped from a wide hero. **Select next unshot pair** advances coverage without spending credits until Photograph is clicked.
+
+Each job persists its shot identity, output aspect and complete direction. Reloads and failed-job retries retain that same shot and size. The planner may assess location feasibility, but the assigned camera role remains authoritative even if planning falls back. Standard placement mode still preserves the source backdrop camera. Lifestyle photoshoot mode permits close camera positions and partial RV framing while retaining visible product identity and the source shoot's palette, wardrobe and setting. Generated shots are named for their photographic role in the campaign gallery, which displays their real shape and pixel dimensions. Close shots still require product review: generative models can move architectural details such as doors even when branding looks correct; approval remains separate from saving.
+
+Private Dropbox originals remain outside Git. Import web-sized generation proxies into the private studio library and name them to match the setup recipe. The current Eagle lifestyle recipes recognize the approved North Point mountain camp, Centurion golden desert camp and Condor family-and-dogs desert camp references.
+
+### Model packs
+
+A model pack turns approved library images for one RV model into a reusable fal reference set. Attach a pack in campaign chat to place the current scene or selected base first, followed by up to three supporting images. Reference order is deterministic: product identity comes before detail, interior and style images; a matching camera view wins within each role. Duplicate, unapproved and evaluation images are excluded. This keeps the existing four-image fal request contract and manual attachment flow intact.
+
+When two or more references are attached, **Save as model pack** stores them for reuse in other campaigns. The first image becomes the pack base and later images become identity references. The model-pack API also supports richer roles (`base`, `identity`, `detail`, `interior`, `style`, `evaluation`), view and room labels, priority, approval status, archiving and full assignment replacement. Evaluation images are deliberately held out so the same photographs used to judge fidelity do not influence generation.
+
+For a large source library, preserve original photographs as the archive and import web-sized generation proxies into the studio. Assign exterior identity views, interior rooms and detail shots explicitly; keep near-duplicates and low-quality frames out of generation. Start with these reference packs and measure product fidelity on held-out images before considering a Jayco-wide style LoRA. A model-specific tune should follow only if repeated reference-driven campaigns still fail on the same identity details.
+
+The bulk importer reads an ignored local manifest, uploads only the selected JPG/PNG/WebP files to the private studio bucket, creates or updates the model pack, saves generation-approved images to its pilot campaign, and leaves evaluation images out of the campaign gallery. Re-running the same manifest reuses matching assets and updates the pack instead of duplicating it:
+
+```sh
+npm run import:model-pack -- \
+  --base-url http://localhost:3000 \
+  --manifest work/model-packs/example/manifest.json
+```
+
+Keep manifests that contain private source paths under `work/`; that directory and the photographs are ignored by Git. A manifest defines pack metadata, `source_dir`, an optional `campaign_name`, and an `assets` array with `file`, `name`, `role`, `view`, `room`, `priority`, `environment`, `lighting`, and `approved_for_generation`. Local imports use the development sign-in automatically. For another authenticated environment, supply its session cookie through `STUDIO_COOKIE` rather than committing credentials.
+
 The Add images dialog supports multi-select library imports and up to ten uploads at once. Removing an image from the gallery removes only its membership; its original file, history and other campaign memberships remain intact. Approval is separate from saving. Campaign upload originals and generated masters are preserved.
 
 ## Workflow
@@ -26,7 +54,7 @@ Three AI landscape plates and a clearly labeled generic AI trailer sample are in
 
 - Landscapes and reusable objects: `openai/gpt-image-2.5/sunburst/text-to-image` through fal.
 - RV compositing and scene objects: `openai/gpt-image-2.5/sunburst/edit` through fal.
-- Every Sunburst request explicitly sets `quality: "max"`, `num_images: 1`, lossless PNG output, and native high-resolution dimensions: 3264×2448 (4:3), 3840×2160 (16:9), 2880×2880 (square), or 2448×3264 (portrait). Four independent requests are submitted concurrently. Higher resolution increases generation time and provider usage; existing files retain their original resolution.
+- Every Sunburst request explicitly sets `quality: "max"`, `num_images: 1`, lossless PNG output, and native high-resolution dimensions: 3264×2448 (4:3), 3840×2160 (16:9), 2880×2880 (square), or 2448×3264 (portrait). The selected take count is submitted as independent requests; preconfigured campaign setups use two. Higher resolution increases generation time and provider usage; existing files retain their original resolution.
 - References above 2 MB are streamed to fal with a 24-hour expiration preference before editing/chat, avoiding repeated base64 copies of large images in Worker memory. The private R2 original remains the master. Generated files are preserved without resizing or recompression.
 - People: `meta/muse-image/edit` through fal, using only the selected scene.
 - Optional prompt enhancement: OpenAI Responses API, `gpt-5.4-mini`, configurable with `PROMPT_MODEL`.

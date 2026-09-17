@@ -138,6 +138,27 @@
 .campaign-home-tools input {
   max-width: 270px;
 }
+
+.campaign-preset-summary {
+  display: grid;
+  gap: 7px;
+  padding: 15px 16px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--secondary);
+  font-size: 13px;
+}
+
+.campaign-preset-summary strong {
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.45;
+}
+
+.campaign-preset-summary span,
+.campaign-preset-summary small {
+  color: var(--muted-foreground);
+}
 .campaign-boards {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -802,6 +823,21 @@
   border-top: 1px solid var(--border);
   background: var(--card);
 }
+.model-pack-control {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-bottom: 9px;
+}
+.model-pack-select {
+  min-width: 0;
+  flex: 1;
+  height: 34px;
+}
+.model-pack-save {
+  flex: none;
+  font-size: 12px;
+}
 .chat-composer {
   border: 1px solid var(--border);
   border-radius: 7px;
@@ -1455,4 +1491,63 @@
   display: block;
   font-size: 12px;
   overflow-wrap: anywhere;
+}
+
+/* The shoot plan uses frame silhouettes so format differences are visible before billing. */
+.photoshoot-plan {margin: 22px 0; border: 1px solid var(--border); border-radius: 10px; padding: 20px; background: var(--background);}
+.shoot-toggle {display:flex; align-items:center; gap:10px; font-size:15px; font-weight:600;}
+.shoot-toggle input {accent-color:var(--brand); width:18px; height:18px;}
+.photoshoot-plan h3 {font-family:Georgia,serif; font-size:25px; margin:18px 0 8px;}
+.photoshoot-plan p {font-size:14px; color:var(--muted-foreground); line-height:1.5;}
+.shoot-contact-sheet {display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px; margin-top:20px;}
+.shoot-shot {text-align:left; border:1px solid var(--border); border-radius:8px; padding:14px; background:var(--card); display:flex; flex-direction:column; gap:6px; min-width:0;}
+.shoot-shot[aria-pressed=true] {border-color:var(--brand); box-shadow:0 0 0 1px var(--brand);}
+.shoot-shot:disabled:not([aria-pressed=true]) {opacity:.6;}
+.shoot-shot strong {font-size:16px; font-weight:500;}
+.shoot-shot>span:not(.shot-frame), .shoot-shot small, .shoot-shot em {font-size:12px;}
+.shoot-shot em {font-style:normal; margin-top:auto; padding-top:8px; color:var(--brand);}
+.shot-frame {display:flex; align-items:flex-end; height:62px; width:110px; max-width:100%; border:1px solid var(--brand); background:var(--secondary); color:var(--brand); padding:5px 8px; margin-bottom:8px;}
+.shot-frame-portrait_4_3 {width:47px;}
+.shot-frame-square_hd {width:62px;}
+.shot-frame-landscape_4_3 {width:83px;}
+.shoot-plan-footer {display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; margin-top:18px; font-size:13px;}
+.photoshoot-results {align-items:start;}
+.photoshoot-results .asset-photo {height:auto;}
+.photoshoot-results .asset-photo img {height:auto; width:100%;}
+@media(max-width:1000px) {.shoot-contact-sheet {grid-template-columns:repeat(2,minmax(0,1fr));}}
+
+
+.campaign-gallery-grid {align-items:start;}
+
+.photoshoot-plan h4 {font-size:16px; font-weight:600; margin:22px 0 8px;}
+.shoot-selected-pair {grid-template-columns:repeat(2,minmax(0,1fr)); margin-top:10px;}
+.shoot-selection-note {font-size:12px!important; overflow-wrap:anywhere;}
+.shoot-passes {display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:10px;}
+.shoot-pass {display:flex; flex-direction:column; gap:8px; text-align:left; padding:14px; border:1px solid var(--border); border-radius:8px; background:var(--card); min-width:0;}
+.shoot-pass strong {font-size:14px;}
+.shoot-pass span {font-size:13px; color:var(--muted-foreground); line-height:1.45;}
+.shoot-pass small {font-size:12px; margin-top:auto; color:var(--brand);}
+.shoot-pass[aria-pressed=true] {border-color:var(--brand); box-shadow:0 0 0 1px var(--brand);}
+.shoot-pass:disabled {opacity:.6;}
+.shoot-browse {border-top:1px solid var(--border); margin-top:22px; padding-top:18px;}
+.shoot-browse summary {cursor:pointer; font-weight:600; font-size:14px;}
+.shoot-filters {display:flex; flex-wrap:wrap; gap:8px; margin-top:14px;}
+.shoot-filters button {font-size:12px; padding:7px 10px; border:1px solid var(--border); border-radius:20px;}
+.shoot-filters button[aria-pressed=true] {background:var(--secondary); border-color:var(--brand); color:var(--brand);}
+.shot-frame {height:auto; aspect-ratio:16/9; width:110px;}
+.shot-frame-portrait_4_3 {aspect-ratio:3/4; width:47px;}
+.shot-frame-portrait_4_5 {aspect-ratio:4/5; width:50px;}
+.shot-frame-portrait_9_16 {aspect-ratio:9/16; width:35px;}
+.shot-frame-square_hd {aspect-ratio:1; width:62px;}
+.shot-frame-landscape_4_3 {aspect-ratio:4/3; width:83px;}
+.shot-usage {color:var(--muted-foreground); line-height:1.5;}
+@media(max-width:1000px) {.shoot-passes {grid-template-columns:repeat(2,minmax(0,1fr));}}
+@media(max-width:480px) {.photoshoot-plan {padding:14px;} .shoot-contact-sheet,.shoot-passes {grid-template-columns:1fr;}}
+
+.campaign-topbar-actions {display:flex; align-items:center; gap:10px; flex-shrink:0;}
+@media(max-width:850px) {
+  .campaign-topbar {height:auto; min-height:70px; display:grid; grid-template-columns:auto 1fr; gap:0 12px; padding-top:12px; padding-bottom:12px;}
+  .campaign-topbar nav {position:static; transform:none; justify-self:end; margin:0; height:42px; gap:14px;}
+  .campaign-topbar-actions {grid-column:1/-1; flex-wrap:wrap; padding-top:8px;}
+  .campaign-topbar-actions [data-slot="button"] {font-size:13px;}
 }

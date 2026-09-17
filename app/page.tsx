@@ -2,7 +2,8 @@
 import { OriginalPhoto } from "@/components/original-photo";
 import { PhotoSource } from "@/components/photo-source";
 import LandscapeDiscovery from '@/components/landscape-discovery';
-import CampaignWorkspace, {
+import CampaignFlow from "@/components/campaign-flow";
+import {
   CampaignHome,
 } from "@/components/campaign-workspace";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -73,7 +74,14 @@ import {
   type Batch,
   type Stage,
   type GenerationStage,
+  type ModelPack,
 } from "@/lib/domain";
+import {
+  campaignPresets,
+  getCampaignPreset,
+} from "@/lib/campaign-presets";
+import { photoshootShots, defaultPhotoshootIds, nextPhotoshootIds, photoshootContinuity, photographedShotIds } from "@/lib/photoshoot";
+import { PhotoshootPlan } from "@/components/photoshoot-plan";
 const BASE = "/api/studio/";
 async function api<T>(
   path: string,
@@ -171,9 +179,10 @@ function formatElapsed(ms: number) {
 export default function Studio() {
   const [assets, setAssets] = useState<Asset[]>([]),
     [projects, setProjects] = useState<Project[]>([]),
+    [modelPacks, setModelPacks] = useState<ModelPack[]>([]),
     [projectId, setProjectId] = useState(""),
     [batches, setBatches] = useState<Batch[]>([]),
-    [view, setView] = useState("create"),
+    [view, setView] = useState("campaigns"),
     [loading, setLoading] = useState(true),
     [error, setError] = useState(""),
     [signIn, setSignIn] = useState(false),
@@ -208,6 +217,9 @@ export default function Studio() {
     [briefOpen, setBriefOpen] = useState(false),
     [campaignDialog, setCampaignDialog] = useState(false),
     [campaignName, setCampaignName] = useState(""),
+    [campaignPresetId, setCampaignPresetId] = useState(
+      "jayco-eagle-north-point",
+    ),
     [saveAsset, setSaveAsset] = useState<Asset | null>(null),
     [saveName, setSaveName] = useState(""),
     [checks, setChecks] = useState({ rv: false, scene: false, crop: false }),
@@ -221,6 +233,8 @@ export default function Studio() {
       {},
     ),
     [previewLoaded, setPreviewLoaded] = useState<Record<string, boolean>>({});
+  const [shootMode, setShootMode] = useState(false);
+  const [shotIds, setShotIds] = useState<string[]>(defaultPhotoshootIds);
   const stateRef = useRef({ assets, projects, projectId });
   stateRef.current = { assets, projects, projectId };
   const project = projects.find((p) => p.id === projectId),
@@ -240,6 +254,11 @@ export default function Studio() {
         : stage === "compose"
           ? "compose"
           : generation;
+  const isPhotoshoot = genStage === "compose" && shootMode;
+  const chosenShots = shotIds.map(id => photoshootShots.find(s => s.id === id)!);
+  const outputCount = isPhotoshoot ? chosenShots.length : imageCount;
+  const completedShotIds = photographedShotIds(batches);
+  const nextShotIds = nextPhotoshootIds(batches);
   const latest = batches.find((b) => b.stage === genStage),
     activeCount = batches
       .flatMap((b) => b.jobs)
@@ -248,10 +267,12 @@ export default function Studio() {
     const data = await api<{
       assets: Asset[];
       projects: Project[];
+      model_packs: ModelPack[];
       connections: { fal: boolean; openai: boolean };
     }>("state");
     setAssets(data.assets);
     setProjects(data.projects);
+    setModelPacks(data.model_packs);
     setConnected(data.connections);
     return data;
   }, []);
@@ -264,11 +285,13 @@ export default function Studio() {
     api<{
       assets: Asset[];
       projects: Project[];
+      model_packs: ModelPack[];
       connections: { fal: boolean; openai: boolean };
     }>("bootstrap", {})
       .then((data) => {
         setAssets(data.assets);
         setProjects(data.projects);
+        setModelPacks(data.model_packs);
         setConnected(data.connections);
         const wanted = new URLSearchParams(location.search).get("project");
         setProjectId(
@@ -277,7 +300,7 @@ export default function Studio() {
             "",
         );
         const params = new URLSearchParams(location.search);
-        const wantedView = params.get("view") ?? "create";
+        const wantedView = params.get("view") ?? (params.get("project") ? "campaign" : "campaigns");
         if (["create", "library", "campaigns", "campaign"].includes(wantedView))
           setView(wantedView);
         const wantedKind = params.get("kind");
@@ -312,14 +335,14 @@ export default function Studio() {
     if (loading || !projectId) return;
     const url = new URL(location.href);
     url.searchParams.set("project", projectId);
-    if (view === "create") url.searchParams.delete("view");
-    else url.searchParams.set("view", view);
+    url.searchParams.set("view", view);
     if (view === "library") url.searchParams.set("kind", libraryKind);
     else url.searchParams.delete("kind");
     history.replaceState(null, "", url);
   }, [loading, projectId, view, libraryKind]);
   useEffect(() => {
     const restore = (event: PopStateEvent) => {
+      window.dispatchEvent(new Event("studio:before-navigation"));
       const params = new URLSearchParams(location.search);
       const id = params.get("project");
       if (
@@ -331,7 +354,7 @@ export default function Studio() {
         event.stopImmediatePropagation();
         setProjectId(id!);
       }
-      const next = params.get("view") ?? "create";
+      const next = params.get("view") ?? (params.get("project") ? "campaign" : "campaigns");
       setView(
         ["create", "library", "campaigns", "campaign"].includes(next)
           ? next
@@ -367,6 +390,19 @@ export default function Studio() {
     project?.current_id,
     project?.composition_id,
   ]);
+  useEffect(() => {
+    const preset = getCampaignPreset(project?.preset_id);
+    setBriefs(
+      preset?.composeBrief
+        ? { ...defaults, compose: preset.mode === "lifestyle" ? preset.composeBrief.split("Create two clearly different shots:")[0].trim() : preset.composeBrief }
+        : defaults,
+    );
+    setShootMode(preset?.mode === "lifestyle");
+    setShotIds(defaultPhotoshootIds);
+    setEnhanced({});
+    setAspect(preset?.aspect ?? "landscape_4_3");
+    setImageCount(preset?.count ?? 2);
+  }, [projectId, project?.preset_id]);
   useEffect(() => {
     if (!batches.some((b) => b.jobs.some((j) => activeStatus(j.status))))
       return;
@@ -468,8 +504,11 @@ export default function Studio() {
     }
   }
   async function generate() {
-    if (!project) return;
+    if (!project || outputCount < 1) return;
     const id = crypto.randomUUID();
+    // This runs only from the generation button, never while rendering.
+    // eslint-disable-next-line react-hooks/purity
+    const requestedAt = Date.now();
     const prompt =
       (enhanced[genStage] || briefs[genStage]) +
       (genStage === "people"
@@ -481,7 +520,8 @@ export default function Studio() {
       stage: genStage,
       prompt,
       aspect,
-      count: imageCount,
+      count: outputCount,
+      ...(isPhotoshoot ? { shot_ids: shotIds } : {}),
       ...(reference !== "none" && genStage === "objects"
         ? { reference_id: reference }
         : {}),
@@ -499,17 +539,18 @@ export default function Studio() {
               ? "text-to-image"
               : "edit"),
       quality: genStage === "people" ? "native" : "max",
-      created_at: Date.now(),
+      created_at: requestedAt,
       inputs_json: "[]",
-      jobs: Array.from({length:imageCount}, (_,slot) => ({
+      jobs: Array.from({length:outputCount}, (_,slot) => ({
         id: id + "-" + slot,
+        ...(isPhotoshoot ? { shot_id: chosenShots[slot].id, shot_label: chosenShots[slot].label, output_aspect: chosenShots[slot].aspect } : {}),
         batch_id: id,
         slot,
         status: "submitting",
         result_asset_id: null,
         error: null,
-        created_at: Date.now(),
-        updated_at: Date.now(),
+        created_at: requestedAt,
+        updated_at: requestedAt,
         request_id: null,
         elapsed_ms: null,
       })),
@@ -544,10 +585,14 @@ export default function Studio() {
     }
   }
   async function createCampaign() {
-    if (!campaignName.trim()) return;
+    const preset = getCampaignPreset(campaignPresetId);
+    const name = campaignName.trim() || preset?.defaultName || "Untitled campaign";
     setBusy(true);
     try {
-      const p = await api<Project>("projects", { name: campaignName });
+      const p = await api<Project>("projects", {
+        name,
+        preset_id: campaignPresetId,
+      });
       setProjects((old) => [p, ...old]);
       setProjectId(p.id);
       setView("create");
@@ -917,7 +962,7 @@ export default function Studio() {
                 ? "Your new landscapes"
                 : b.stage === "prop"
                   ? "Your new objects"
-                  : "Choose your favorite take"}
+                  : b.jobs.some(j => j.shot_id) ? "Your campaign photographs" : "Choose your favorite take"}
             </h3>
             <p>
               {b.stage === "people"
@@ -949,7 +994,7 @@ export default function Studio() {
           </span>
         </div>
         <p className="selection-help">
-          {b.stage === "compose" && b.jobs.some(j => j.shot_label) ? b.jobs.every(j => j.shot_label?.startsWith("Preset ·")) ? `Automatic scene assessment was unavailable. Using ${b.jobs.length} conservative placement preset${b.jobs.length === 1 ? "" : "s"} with your source photos. ` : `${b.jobs.length} placement${b.jobs.length === 1 ? "" : "s"} planned from your RV and backdrop. ` : ""}Save any photos you like to your campaign. Select one photo to
+          {b.jobs.some(j => j.shot_id) ? "Distinct photos from your shoot plan. " : b.stage === "compose" && b.jobs.some(j => j.shot_label) ? b.jobs.every(j => j.shot_label?.startsWith("Preset ·")) ? `Automatic scene assessment was unavailable. Using ${b.jobs.length} conservative placement preset${b.jobs.length === 1 ? "" : "s"} with your source photos. ` : `${b.jobs.length} placement${b.jobs.length === 1 ? "" : "s"} planned from your RV and backdrop. ` : ""}Save any photos you like to your campaign. Select one photo to
           continue editing.
         </p>
         <Progress
@@ -957,11 +1002,11 @@ export default function Studio() {
           aria-label={`${ready} of ${b.jobs.length} images ready`}
           className="batch-progress"
         />
-        <div className="results-grid">
+        <div className={`results-grid${b.jobs.some(j => j.shot_id) ? " photoshoot-results" : ""}`}>
           {b.jobs.map((j) => {
             const a = byId.get(j.result_asset_id ?? "");
             return a ? (
-              j.shot_label ? <div className="planned-take" key={j.id}><p className="shot-label">Take {j.slot + 1} · {j.shot_label}</p>{assetCard(a)}</div> : assetCard(a)
+              j.shot_label ? <div className="planned-take" key={j.id}><p className="shot-label">Take {j.slot + 1} · {j.shot_label}{j.output_aspect ? ` · ${generationSizeLabel(j.output_aspect)}` : ""}</p>{assetCard(a)}</div> : assetCard(a)
             ) : (
               <article className="job-card" key={j.id}>
                 <div className="job-placeholder">
@@ -1120,6 +1165,25 @@ export default function Studio() {
               />
             </label>
           )}
+          {genStage === "compose" && (
+            <section className="photoshoot-plan" aria-label="Photoshoot plan">
+              <label className="shoot-toggle">
+                <input type="checkbox" checked={shootMode} disabled={submitting || activeCount > 0}
+                  onChange={e => {
+                    setShootMode(e.target.checked);
+                    if (e.target.checked) {
+                      setShotIds(defaultPhotoshootIds);
+                      const preset = getCampaignPreset(project?.preset_id);
+                      setBriefs(b => ({...b, compose: preset?.mode === "lifestyle" ? preset.composeBrief.split("Create two clearly different shots:")[0].trim() : photoshootContinuity}));
+                      setEnhanced(e => ({...e, compose: undefined}));
+                    }
+                  }} />
+                Plan a lifestyle photoshoot
+              </label>
+              {shootMode && <PhotoshootPlan selectedIds={shotIds} completedIds={completedShotIds}
+                nextIds={nextShotIds} disabled={submitting || activeCount > 0} onSelect={setShotIds} />}
+            </section>
+          )}
           <label className="field-label" htmlFor="creative-brief">
             Creative brief
           </label>
@@ -1158,9 +1222,10 @@ export default function Studio() {
               />
             </div>
           )}
-          {genStage === "compose" && <p className="selection-help">For a natural fit, use a backdrop with visible level ground and an RV photo taken from a similar camera height. Scale follows the scene’s depth; distant RVs stay distant.</p>}
+          {genStage === "compose" && <p className="selection-help">{isPhotoshoot ? "The RV reference preserves the product. The lifestyle reference guides the setting, color, cast styling and props. Close shots can frame just part of the RV to give the human story room." : "For a natural fit, use a backdrop with visible level ground and an RV photo taken from a similar camera height. Scale follows the scene’s depth; distant RVs stay distant."}</p>}
           <div className="generate-footer">
             <div>
+              {!isPhotoshoot && <>
               <Choice
                 value={aspect}
                 onChange={setAspect}
@@ -1170,11 +1235,15 @@ export default function Studio() {
                   ["landscape_16_9", "Wide · 16:9"],
                   ["square_hd", "Square · 1:1"],
                   ["portrait_4_3", "Portrait · 3:4"],
+                  ["portrait_4_5", "Feed · 4:5"],
+                  ["portrait_9_16", "Story · 9:16"],
                 ]}
               />
               <Choice value={String(imageCount)} onChange={v=>setImageCount(Number(v))} label="Number of images" options={[["1","1 image"],["2","2 images"],["3","3 images"],["4","4 images"]]} disabled={submitting}/>
+              </>}
+              {isPhotoshoot && <span>{chosenShots.map(s => s.format).join(" + ") || "Select at least one shot"}</span>}
               <small>
-                {genStage === "people"
+                {isPhotoshoot ? `${outputCount} individually composed images. Each shape is generated natively.` : genStage === "people"
                   ? `${imageCount} image${imageCount === 1 ? "" : "s"} billed by fal.`
                   : `${generationSizeLabel(aspect)}. ${imageCount} Max image${imageCount === 1 ? "" : "s"} via fal.`}{" "}
                 Higher resolution takes longer and may cost more.
@@ -1186,7 +1255,9 @@ export default function Studio() {
                 submitting ||
                 !connected.fal ||
                 (enhanced[genStage] || briefs[genStage]).length < 10 ||
-                activeCount + imageCount > 8
+                outputCount < 1 ||
+                activeCount + outputCount > 8 ||
+                (isPhotoshoot && activeCount > 0)
               }
             >
               {submitting ? <LoaderCircle className="spinner" /> : <Sparkles />}
@@ -1194,7 +1265,7 @@ export default function Studio() {
                 ? `Create ${imageCount} landscape${imageCount === 1 ? "" : "s"}`
                 : genStage === "prop"
                   ? `Create ${imageCount} object${imageCount === 1 ? "" : "s"}`
-                  : `Generate ${imageCount} take${imageCount === 1 ? "" : "s"}`}
+                  : isPhotoshoot ? `Photograph ${outputCount} shot${outputCount === 1 ? "" : "s"}` : `Generate ${imageCount} take${imageCount === 1 ? "" : "s"}`}
             </Button>
           </div>
         </section>
@@ -1373,10 +1444,11 @@ export default function Studio() {
       </div>
     );
   function navigate(next: string) {
+    if (next === "inventory") { setLibraryKind("rv"); next = "library"; }
+    else if (next === "library") setLibraryKind("landscape");
     setView(next);
     const url = new URL(location.href);
-    if (next !== "create") url.searchParams.set("view", next);
-    else url.searchParams.delete("view");
+    url.searchParams.set("view", next);
     if (next === "library") url.searchParams.set("kind", libraryKind);
     else url.searchParams.delete("kind");
     if (url.toString() !== location.href) history.pushState(null, "", url);
@@ -1385,17 +1457,12 @@ export default function Studio() {
     return (
       <>
         <Toaster theme="system" richColors position="top-right" />
-        <CampaignWorkspace
-          key={project.id}
-          project={project}
-          assets={assets}
-          batches={batches}
-          onNav={navigate}
-          onRefresh={refresh}
-          onBatch={(b) =>
-            setBatches((old) => [b, ...old.filter((x) => x.id !== b.id)])
-          }
-          onWizard={() => navigate("create")}
+        <CampaignFlow
+          key={project.id} project={project} projects={projects} assets={assets}
+          batches={batches} modelPacks={modelPacks}
+          onNav={navigate} onRefresh={refresh}
+          onBatch={(b)=>setBatches(old=>[b,...old.filter(x=>x.id!==b.id)])}
+          onTools={()=>navigate("create")}
         />
       </>
     );
@@ -1411,10 +1478,12 @@ export default function Studio() {
             setProjectId(id);
             navigate("campaign");
           }}
-          onNew={async () => {
+          onNew={async (presetId) => {
+            const preset = getCampaignPreset(presetId)!;
             try {
               const p = await api<Project>("projects", {
-                name: "Untitled campaign",
+                name: preset.defaultName,
+                preset_id: preset.id,
               });
               setProjects((old) => [p, ...old]);
               setProjectId(p.id);
@@ -1451,17 +1520,17 @@ export default function Studio() {
       <header className="topbar">
         <button
           className="brand"
-          onClick={() => navigate("create")}
+          onClick={() => navigate("campaigns")}
           aria-label="THOR Studio home"
         >
           <Mountain />
           THOR STUDIO
         </button>
         <nav aria-label="Main navigation">
-          {["library", "create", "campaigns"].map((v) => (
+          {["campaigns", "inventory", "library"].map((v) => (
             <button
               key={v}
-              className={view === v ? "active" : ""}
+              className={(v === "inventory" ? view === "library" && libraryKind === "rv" : v === "library" ? view === "library" && libraryKind !== "rv" : view === v) ? "active" : ""}
               onClick={() => {
                 navigate(v);
                 setQuery("");
@@ -1469,7 +1538,7 @@ export default function Studio() {
                 setTab("library");
               }}
             >
-              {v[0].toUpperCase() + v.slice(1)}
+              {{campaigns:"Campaigns",inventory:"RV Inventory",library:"Asset Library"}[v]}
             </button>
           ))}
         </nav>
@@ -1544,7 +1613,9 @@ export default function Studio() {
               <button
                 className="new-campaign-link"
                 onClick={() => {
-                  setCampaignName("");
+                  const preset = getCampaignPreset("jayco-eagle-north-point")!;
+                  setCampaignPresetId(preset.id);
+                  setCampaignName(preset.defaultName);
                   setCampaignDialog(true);
                 }}
               >
@@ -1609,7 +1680,7 @@ export default function Studio() {
                     : [
                         "Choose an original RV photo, or upload a new reference.",
                         "Find a setting that feels like your next adventure.",
-                        "Choose the photograph before adding people or objects.",
+                        isPhotoshoot ? "A coordinated shoot with candid life, distinct camera positions and a mix of image shapes." : "Choose the photograph before adding people or objects.",
                         "Work on your selected take. Every accepted version is kept.",
                         "Compare with the original RV before approving your photograph.",
                       ][stageIndex]}
@@ -1813,7 +1884,7 @@ export default function Studio() {
                         <img src={a.thumbnail_url || a.url} alt={a.name} />
                         <div>
                           <small>
-                            {i === 0 ? "Your RV" : "Your landscape"}
+                            {i === 0 ? "Your RV" : isPhotoshoot ? "Lifestyle & color reference" : "Your landscape"}
                           </small>
                           <strong>{a.name}</strong>
                         </div>
@@ -2336,6 +2407,38 @@ export default function Studio() {
               Your existing campaigns and images stay saved.
             </DialogDescription>
           </DialogHeader>
+          <label className="field-label">
+            Campaign setup
+            <Select
+              value={campaignPresetId}
+              onValueChange={(value) => {
+                setCampaignPresetId(value);
+                setCampaignName(getCampaignPreset(value)?.defaultName ?? "");
+              }}
+            >
+              <SelectTrigger aria-label="Campaign setup">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {campaignPresets.map((preset) => (
+                  <SelectItem key={preset.id} value={preset.id}>
+                    {preset.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </label>
+          {getCampaignPreset(campaignPresetId) && (
+            <div className="campaign-preset-summary">
+              <strong>{getCampaignPreset(campaignPresetId)!.description}</strong>
+              <span>{getCampaignPreset(campaignPresetId)!.rvLabel}</span>
+              <span>{getCampaignPreset(campaignPresetId)!.styleLabel}</span>
+              <small>
+                {getCampaignPreset(campaignPresetId)!.count} takes ·{" "}
+                {generationSizeLabel(getCampaignPreset(campaignPresetId)!.aspect)} · prompt preloaded
+              </small>
+            </div>
+          )}
           <Input
             aria-label="Campaign name"
             placeholder="Autumn escapes"

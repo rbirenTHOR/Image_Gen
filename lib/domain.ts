@@ -12,7 +12,17 @@ export const generationSizes: Record<
   landscape_16_9: { width: 3840, height: 2160 },
   square_hd: { width: 2880, height: 2880 },
   portrait_4_3: { width: 2448, height: 3264 },
+  portrait_4_5: { width: 2560, height: 3200 },
+  portrait_9_16: { width: 2160, height: 3840 },
 };
+export function sourceImageAspect(width: number | null, height: number | null) {
+  if (!width || !height || width < 0 || height < 0) return "landscape_4_3";
+  const ratio = width / height;
+  return Object.entries(generationSizes).reduce((best, [key, size]) =>
+    Math.abs(Math.log(ratio / (size.width / size.height))) <
+    Math.abs(Math.log(ratio / (generationSizes[best].width / generationSizes[best].height))) ? key : best,
+  "landscape_4_3");
+}
 export function generationSizeLabel(aspect: string) {
   const size = generationSizes[aspect];
   return size
@@ -68,6 +78,8 @@ export interface Asset {
   url: string;
 }
 export interface Project {
+  workflow_json?: string;
+  workflow_revision?: number;
   saved_count?: number;
   id: string;
   name: string;
@@ -76,10 +88,91 @@ export interface Project {
   landscape_id: string | null;
   composition_id: string | null;
   current_id: string | null;
+  model_pack_id: string | null;
+  preset_id: string;
   updated_at: number;
   version: number;
 }
+export const modelPackRoles = [
+  "base",
+  "identity",
+  "detail",
+  "interior",
+  "style",
+  "evaluation",
+] as const;
+export type ModelPackRole = (typeof modelPackRoles)[number];
+export interface ModelPackAsset {
+  id: string;
+  pack_id: string;
+  asset_id: string;
+  role: ModelPackRole;
+  view: string;
+  room: string;
+  priority: number;
+  approved_for_generation: number;
+  created_at: number;
+}
+export interface ModelPack {
+  id: string;
+  name: string;
+  brand: string;
+  model: string;
+  model_year: string;
+  product_class: string;
+  status: string;
+  created_at: number;
+  updated_at: number;
+  assets: ModelPackAsset[];
+}
+const modelPackRoleOrder: Record<ModelPackRole, number> = {
+  base: 0,
+  identity: 1,
+  detail: 2,
+  interior: 3,
+  style: 4,
+  evaluation: 5,
+};
+/**
+ * Build the ordered fal reference list for a model pack. Image 1 is always the
+ * explicit campaign base when one is supplied. Evaluation images remain held
+ * out, and only approved assets can reach generation.
+ */
+export function selectModelPackReferences(
+  assignments: ModelPackAsset[],
+  baseId?: string | null,
+  preferredView = "",
+) {
+  const normalizedView = preferredView.trim().toLowerCase();
+  const eligible = assignments
+    .filter(
+      (item) =>
+        item.approved_for_generation === 1 && item.role !== "evaluation",
+    )
+    .sort((a, b) => {
+      const aView =
+        normalizedView && a.view.toLowerCase() === normalizedView ? 0 : 1;
+      const bView =
+        normalizedView && b.view.toLowerCase() === normalizedView ? 0 : 1;
+      return (
+        modelPackRoleOrder[a.role] - modelPackRoleOrder[b.role] ||
+        aView - bView ||
+        a.priority - b.priority ||
+        a.created_at - b.created_at
+      );
+    });
+  const first =
+    baseId || eligible.find((item) => item.role === "base")?.asset_id || null;
+  const ids = first ? [first] : [];
+  for (const item of eligible) {
+    if (!ids.includes(item.asset_id)) ids.push(item.asset_id);
+    if (ids.length === 4) break;
+  }
+  return ids;
+}
 export interface Job {
+  shot_id?: string;
+  output_aspect?: string;
   shot_label?: string;
   generation_prompt?: string;
   id: string;
@@ -94,6 +187,8 @@ export interface Job {
   elapsed_ms: number | null;
 }
 export interface Batch {
+  workflow_json?: string;
+  workflow_revision?: number;
   id: string;
   project_id: string;
   stage: GenerationStage;
@@ -105,7 +200,7 @@ export interface Batch {
   jobs: Job[];
 }
 export const activeStatus = (s: string) =>
-  ["submitting", "queued", "generating", "saving"].includes(s);
+  ["waiting", "submitting", "queued", "generating", "saving"].includes(s);
 export const generationCountSchema = z.number().int().min(1).max(4).default(2);
 export const requestSchema = z.object({
   count: generationCountSchema,
@@ -122,12 +217,15 @@ export const requestSchema = z.object({
   ]),
   prompt: z.string().trim().min(10).max(12000),
   aspect: z
-    .enum(["landscape_4_3", "landscape_16_9", "square_hd", "portrait_4_3"])
+    .enum(["landscape_4_3", "landscape_16_9", "square_hd", "portrait_4_3", "portrait_4_5", "portrait_9_16"])
     .default("landscape_4_3"),
+  shot_ids: z.array(z.string().min(1).max(50)).min(1).max(2).optional(),
   reference_id: z.string().max(100).optional(),
   reference_ids: z.array(z.string().min(1).max(100)).max(4).optional(),
 });
 export const placementGeometryBrief = `Treat the RV as one rigid object: preserve its observed body length-to-height ratio, wheel diameter, axle spacing, roofline and visible side. Use uniform scaling, never stretch, squash, bend or widen the body to fit a space. First identify the backdrop camera height, horizon or vanishing direction, ground slope and a continuous load-bearing contact area. Match the source RV camera elevation and visible roof/side perspective to the destination; do not paste an elevated dealer photograph into an eye-level scene unchanged. Preserve the supported view without inventing an unseen side. Establish the tire contact line on a named visible patch of ground, then derive vehicle scale from that depth and local reference objects. At greater distance the full vehicle shrinks consistently and the contact line approaches the ground-plane horizon; do not choose screen position and width independently. Use visible road width, nearby vehicles or other reliable scale cues when available, but do not invent dimensions or assume every tree is the same size. Anchor every visible tire and support to the same ground plane with compact contact shadows and a consistent cast shadow; allow foreground terrain to occlude the lowest edges where appropriate. Keep wheels round in their projected plane, the chassis level with the local ground, and no floating, buried tires or giant/toy proportions. Match local contrast, grain, atmospheric depth and reflections. Physical fit takes priority over composition variety. If output aspect differs, crop the plate conservatively without stretching either reference.`;
+// Shared by placement and lifestyle shoots: varying the shot must not bypass integration.
+export const sceneIntegrationBrief = `Photograph the RV, people and environment as one coherent exposure. Preserve the selected RV view and rigid proportions while choosing compatible scene perspective, camera elevation and horizon; never bend the vehicle to force a mismatch. Establish its scale from depth, the ground plane and believable nearby people or objects, not an arbitrary fraction of the frame. When visible, anchor every tire, jack and support to the same load-bearing ground plane with compact contact shadows, natural ground occlusion and a cast shadow consistent with the scene's light direction, softness and intensity. A close crop may leave contacts outside the frame without changing the geometry behind it. Replace the source photo's studio/dealer lighting, white-background spill and old ground shadow with the destination's light: match exposure, white balance, highlight rolloff, shaded-side ambient fill and subtle ground/vegetation color bounce while preserving actual paint, graphics and materials. Update reflections in glass and glossy body panels to show the destination sky and surroundings; retain window shapes, tint and decals instead of copying reflections from the RV's original setting. Match local contrast, grain, atmospheric depth, distance-dependent sharpness and depth of field across RV, people and background. Avoid cutout halos, mismatched edge sharpness, floating supports and a uniformly crisp product pasted over a soft scene. Occlusion must follow physical depth, including people and props crossing in front. Physical fit and source fidelity take priority over composition variety; adapt the frame instead of inventing geometry.`;
 export const photographicBrief = `Render a believable camera photograph with natural color and ordinary real-world detail. Use one coherent light source, physically consistent shadows, gentle highlight rolloff and believable material reflections. Texture should follow the object and its distance from the camera, rather than look uniformly sharp. Keep subtle irregularities and natural tonal variation. Avoid painterly blending, airbrushed surfaces, CGI gloss, HDR halos and oversharpening. For edits, retain the source camera, exposure and color balance unless the requested change requires otherwise.`;
 export const environmentBrief = `Build a geographically coherent place. Nearby gravel has irregular stone sizes, embedded edges and small contact shadows; soil, grass and rock remain distinct materials. Trees have asymmetric branches and varied spacing, with foliage resolving into plausible clusters rather than repeating stamps or smeared green masses. Rock formations have consistent strata and erosion. Water reflects the actual sky and surroundings with modest surface variation. Foreground detail is more legible than distant detail; distant terrain loses contrast and fine texture gradually through real atmospheric perspective. Keep the horizon, cloud scale and vegetation plausible. Do not add water, trees or mountains when they are absent from the requested setting.`;
 export const promptEnhancementGuide = `Translate the user's intent into concrete photographic instructions, not a list of quality adjectives. Specify the requested place, realistic materials, a coherent light direction and believable spatial relationships. Avoid adding dramatic skies, orange-and-teal grading, excessive golden glow, artificial mist, perfect symmetry or an idealized postcard composition. Preserve explicitly requested weather, time of day and artistic intent. Prefer positive descriptions of the desired result to long negative lists. For existing photos, describe only the requested change and identify what must remain unchanged; do not prescribe a new lens, viewpoint or global lighting by default.`;
@@ -144,7 +242,15 @@ export function buildPrompt(
   brief: string,
   slot: number,
   placement?: string,
+  allowLifestyle = false,
+  photoshoot = false,
 ) {
+  const geometry = photoshoot
+    ? "Preserve the exact RV body proportions, visible livery, windows, doors and hardware. Logos need not appear or be legible: allow natural cropping, occlusion and depth of field, preserving markings only where naturally visible. Never move or enlarge branding or change body geometry to make the RV read as a product. Keep every visible tire and support grounded with coherent perspective and shadows. Door, window and compartment positions are fixed relative to the axles and front cap; never move them for framing. Preserve the door open/closed state from the RV reference and do not reveal an unsupported interior. The approved source supports its shown exterior side only. For a close lifestyle photograph, intentionally frame a partial RV rather than compressing its entire length into a narrow image. Reframe within the assessed source perspective while keeping the same real location and palette. The RV view assessment overrides any unsupported camera movement in the assigned shot. Never mirror lettering, fabricate an unseen interior, stretch the RV or blend it with the source-shoot vehicle."
+    : placementGeometryBrief;
+  const composeInstruction = allowLifestyle
+    ? "Image 1 is the exact RV identity reference; image 2 is an approved Jayco lifestyle reference that may contain a different RV. Replace the RV in image 2 completely with the RV from image 1 while preserving image 1's body geometry, graphics, badges, lettering, windows, doors, wheels, accessories and color. Transfer only the requested setting, light, color response, camera language, people, wardrobe, activity and prop styling from image 2. Follow the creative direction for the exact cast, activity and shot role. Match perspective, scale, occlusion, reflections and ground contact. Keep people candid and anatomically realistic, with believable interaction, fabric and shadows. Do not retain, hybridize or duplicate the RV from image 2."
+    : "Image 1 is the source RV; image 2 is the selected landscape. Place that exact RV into that landscape, matching camera perspective, scale, light and ground contact. Preserve the RV body geometry, graphics, badges, lettering, windows, doors, wheels, accessories and color as accurately as possible. Update reflections in glass and glossy body panels to match the selected landscape and its sky; retain the physical window shapes, tint and decals instead of copying reflections from the RV's original setting. Treat image 2 as the background plate to preserve, not inspiration for a new landscape. Keep its horizon, terrain, vegetation, sky and photographic texture; change only the vehicle footprint, necessary occlusion and local contact shadows. No people or added props. Additional images, if present, are supporting RV reference views.";
   const instructions: Record<GenerationStage, string> = {
     campaign:
       "Create a new commercial campaign image from the creative direction. Include only subjects requested by the user. Do not invent brand lettering or product specifications.",
@@ -152,8 +258,7 @@ export function buildPrompt(
       "Edit image 1 according to the creative direction. Further images, if present, are supporting references in their supplied order, not separate images to edit. Preserve the identity and geometry of any RV, its graphics, windows, doors, wheels and accessories. Change only the requested elements. Use image 1 as the base scene; do not combine unrelated supporting subjects unless requested. Match light, scale, perspective and ground contact. Preserve untouched landscape detail and avoid cumulative smoothing or restyling across edits.",
     landscape:
       "Create a clean reusable landscape plate. Provide generous relatively level foreground for a large RV. No RVs, vehicles, people, animals, buildings, camping equipment, signs, typography or other man-made objects. Geography and vegetation must be plausible for the described place. Photograph a plausible real location at standing eye level with a normal 35mm perspective and moderate landscape depth of field, approximately f/8. Leave usable ground without turning it into a perfectly smooth or staged platform.",
-    compose:
-      "Image 1 is the source RV; image 2 is the selected landscape. Place that exact RV into that landscape, matching camera perspective, scale, light and ground contact. Preserve the RV body geometry, graphics, badges, lettering, windows, doors, wheels, accessories and color as accurately as possible. Update reflections in glass and glossy body panels to match the selected landscape and its sky; retain the physical window shapes, tint and decals instead of copying reflections from the RV's original setting. Treat image 2 as the background plate to preserve, not inspiration for a new landscape. Keep its horizon, terrain, vegetation, sky and photographic texture; change only the vehicle footprint, necessary occlusion and local contact shadows. No people or added props. Additional images, if present, are supporting RV reference views.",
+    compose: composeInstruction,
     people:
       "Edit only the requested people into image 1. Preserve the RV, its graphics, landscape, camera viewpoint and composition. Match scale, ambient light, sun direction and shadows. Natural skin texture, realistic hair, candid posture, clothing with believable wrinkles. Preserve background texture outside the added people and their immediate shadows. No waxy skin or exaggerated smiles.",
     objects:
@@ -184,7 +289,7 @@ export function buildPrompt(
     stage === "landscape" || stage === "campaign"
       ? `\n\nENVIRONMENT\n${environmentBrief}`
       : "";
-  return `${instructions[stage]}${stage === "compose" ? "\n\nPLACEMENT GEOMETRY\n" + placementGeometryBrief : ""}\n\nCREATIVE DIRECTION\n${brief}\n\nPHOTOGRAPHIC STANDARD\n${photographicBrief}${environment}\n\nVARIATION ${slot + 1}\n${stage === "compose" && placement ? placement : variations[slot]}${stage === "compose" ? "\nPlacement must obey explicit user constraints and visible terrain. Do not force a vehicle onto water, steep slopes or vegetation. Keep the backdrop camera and horizon fixed; create variation through vehicle position, distance and modest supported orientation. Do not mirror lettering or invent unseen vehicle details. Produce one photograph, never a collage." : ""}`;
+  return `${instructions[stage]}${stage === "compose" ? "\n\nPLACEMENT GEOMETRY\n" + geometry : ""}\n\nCREATIVE DIRECTION\n${brief}\n\nPHOTOGRAPHIC STANDARD\n${photographicBrief}${environment}\n\nVARIATION ${slot + 1}\n${stage === "compose" && placement ? placement : variations[slot]}${stage === "compose" ? "\n\nSCENE INTEGRATION\n" + sceneIntegrationBrief : ""}${stage === "compose" && !photoshoot ? "\nPlacement must obey explicit user constraints and visible terrain. Do not force a vehicle onto water, steep slopes or vegetation. Keep the backdrop camera and horizon fixed; create variation through vehicle position, distance and modest supported orientation. Do not mirror lettering or invent unseen vehicle details. Produce one photograph, never a collage." : ""}`;
 }
 export function providerInput(
   stage: GenerationStage,

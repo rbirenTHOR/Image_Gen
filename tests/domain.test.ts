@@ -1,5 +1,11 @@
 import { parseCompositionShots, placementPresets } from '../lib/composition-plan.ts';
 import {parseLandscape, commonsImageUrl, sourceText, landscapeQueries} from '../lib/landscape-discovery.ts';
+import { imageDimensions } from "../lib/image-metadata.ts";
+import {
+  campaignPresets,
+  getCampaignPreset,
+  resolveCampaignPreset,
+} from "../lib/campaign-presets.ts";
 import test from "node:test";
 import assert from "node:assert/strict";
 test('Natural landscape requests broaden without changing place words into source operators',()=>{
@@ -27,6 +33,8 @@ import {
   requestSchema,
   activeStatus,
   generationSizes,
+  selectModelPackReferences,
+  type ModelPackAsset,
 } from "../lib/domain.ts";
 test("All Sunburst operations explicitly request Max and one image per independent job", () => {
   for (const stage of [
@@ -100,7 +108,7 @@ test("Request validation blocks unsupported routing and invalid request identifi
   assert.ok(!requestSchema.safeParse({ ...valid, prompt: "x" }).success);
 });
 test("Only actionable job states continue polling", () => {
-  for (const s of ["queued", "submitting", "generating", "saving"])
+  for (const s of ["waiting", "queued", "submitting", "generating", "saving"])
     assert.equal(activeStatus(s), true);
   for (const s of ["ready", "failed", "unknown", "save_failed"])
     assert.equal(activeStatus(s), false);
@@ -128,6 +136,8 @@ test("Native high-resolution outputs preserve aspect and satisfy fal pixel const
     landscape_16_9: 16 / 9,
     square_hd: 1,
     portrait_4_3: 3 / 4,
+    portrait_4_5: 4 / 5,
+    portrait_9_16: 9 / 16,
   };
   for (const [aspect, size] of Object.entries(generationSizes)) {
     assert.equal(size.width % 16, 0);
@@ -187,4 +197,201 @@ test("Native high-resolution outputs preserve aspect and satisfy fal pixel const
 test('Placement plans enforce the requested count',()=>{
   for(const n of [1,2,3,4]) assert.equal(parseCompositionShots({shots:placementPresets.slice(0,n)},n).length,n);
   assert.throws(()=>parseCompositionShots({shots:placementPresets},2));
+});
+
+test("Model packs preserve the campaign base, prefer identity views, and hold evaluation images out", () => {
+  const item = (
+    asset_id: string,
+    role: ModelPackAsset["role"],
+    priority: number,
+    view = "",
+    approved_for_generation = 1,
+  ): ModelPackAsset => ({
+    id: "assignment-" + asset_id,
+    pack_id: "pack",
+    asset_id,
+    role,
+    view,
+    room: "",
+    priority,
+    approved_for_generation,
+    created_at: priority,
+  });
+  const assignments = [
+    item("held-out", "evaluation", 0, "front"),
+    item("unapproved", "identity", 0, "front", 0),
+    item("rear", "identity", 1, "rear"),
+    item("front", "identity", 8, "front"),
+    item("detail", "detail", 0, "front"),
+    item("style", "style", 0, "front"),
+  ];
+  assert.deepEqual(
+    selectModelPackReferences(assignments, "campaign-base", "front"),
+    ["campaign-base", "front", "rear", "detail"],
+  );
+  assert.ok(
+    !selectModelPackReferences(assignments, "campaign-base", "front").includes(
+      "held-out",
+    ),
+  );
+});
+
+test("A model pack supplies its own base and removes duplicate assignments", () => {
+  const base: ModelPackAsset = {
+    id: "one",
+    pack_id: "pack",
+    asset_id: "rv-front",
+    role: "base",
+    view: "front",
+    room: "",
+    priority: 0,
+    approved_for_generation: 1,
+    created_at: 1,
+  };
+  assert.deepEqual(selectModelPackReferences([base, { ...base, id: "two" }]), [
+    "rv-front",
+  ]);
+});
+
+test("Uploaded image dimensions are read without decoding the full file", () => {
+  const jpeg = Uint8Array.from([
+    0xff, 0xd8, 0xff, 0xe0, 0x00, 0x04, 0, 0, 0xff, 0xc0, 0x00, 0x0b,
+    0x08, 0x05, 0x56, 0x08, 0x00, 0x03, 1, 0x11, 0,
+  ]);
+  assert.deepEqual(imageDimensions(jpeg, "image/jpeg"), {
+    width: 2048,
+    height: 1366,
+  });
+  const png = new Uint8Array(24);
+  png.set([0, 0, 8, 0, 0, 0, 5, 86], 16);
+  assert.deepEqual(imageDimensions(png, "image/png"), {
+    width: 2048,
+    height: 1366,
+  });
+});
+
+test("Eagle campaign presets use two-shot sets and resolve approved references", () => {
+  const asset = (overrides: Record<string, unknown>) =>
+    ({
+      id: crypto.randomUUID(),
+      kind: "rv",
+      brand: "Jayco",
+      model: "Eagle Fifth Wheel",
+      year: "2026",
+      name: "Eagle",
+      ...overrides,
+    }) as never;
+  const rv = asset({});
+  const style = asset({
+    kind: "landscape",
+    brand: "",
+    model: "",
+    year: "",
+    name: "Jayco North Point lifestyle setup — wooded mountain field",
+  });
+  const presets = campaignPresets.filter((preset) => preset.id !== "blank");
+  assert.equal(presets.length, 7);
+  assert.ok(presets.every((preset) => preset.count === 2));
+  assert.equal(presets.filter((preset) => preset.mode === "lifestyle").length, 3);
+  assert.ok(
+    presets
+      .filter((preset) => preset.mode === "lifestyle")
+      .every((preset) => preset.fallbackShots?.length === 2),
+  );
+  assert.deepEqual(
+    new Set(presets.map((preset) => preset.aspect)),
+    new Set(["landscape_4_3", "landscape_16_9", "square_hd", "portrait_4_3"]),
+  );
+  const resolved = resolveCampaignPreset(
+    getCampaignPreset("jayco-eagle-north-point-wide")!,
+    [style, rv],
+  );
+  assert.equal(resolved.rv, rv);
+  assert.equal(resolved.landscape, style);
+  const lifestylePrompt = buildPrompt(
+    "compose",
+    "Two candid adults beside the Eagle.",
+    0,
+    "Use the foreground camp pad.",
+    true,
+  );
+  assert.match(lifestylePrompt, /approved Jayco lifestyle reference/);
+  assert.match(lifestylePrompt, /candid and anatomically realistic/);
+});
+
+test('Photoshoot selection preserves order, mixed native formats and a two-shot limit', async () => {
+  const { resolvePhotoshootShots, photoshootPrompt, nextPhotoshootIds } = await import('../lib/photoshoot.ts');
+  const shots = resolvePhotoshootShots(['portrait', 'establishing']);
+  assert.deepEqual(shots.map(s => s.aspect), ['portrait_4_3', 'landscape_16_9']);
+  for (const ids of [[], ['portrait', 'portrait'], ['missing'], ['portrait', 'detail', 'action']])
+    assert.throws(() => resolvePhotoshootShots(ids));
+  const prompt = buildPrompt('compose', 'Use the reference cast and palette.', 0,
+    photoshootPrompt(shots[0], 'Use the reference cast and palette.'), true, true);
+  assert.match(prompt, /Intentionally crop the RV/);
+  assert.match(prompt, /Keep the door closed if the RV identity photo shows it closed/);
+  assert.match(prompt, /never relocate, resize or reorder/);
+  assert.match(prompt, /complete cast and pets do not need to appear in every image/);
+  assert.ok(!prompt.includes('Keep the backdrop camera and horizon fixed'));
+  assert.ok(!prompt.includes('No people or added props'));
+  assert.deepEqual(providerInput('compose', prompt, shots[0].aspect, ['rv', 'style']).image_size,
+    {width:2448,height:3264});
+  const history = [{stage:'compose', jobs:[{status:'ready',shot_id:'establishing'}, {status:'failed',shot_id:'portrait'}, {status:'ready',shot_id:''}]}] as never;
+  assert.deepEqual(nextPhotoshootIds(history), ['portrait','detail']);
+});
+
+
+test('Full shoot coverage pairs every role once and advances only past ready compositions', async () => {
+  const { photoshootShots, photoshootPasses, photoshootCategories, nextPhotoshootIds, photographedShotIds, photoshootPrompt } = await import('../lib/photoshoot.ts');
+  const ids = photoshootShots.map(s => s.id);
+  const planned = photoshootPasses.flatMap(p => p.shotIds);
+  assert.equal(ids.length, 18);
+  assert.equal(new Set(planned).size, planned.length);
+  assert.deepEqual(new Set(planned), new Set(ids));
+  assert.equal(new Set(photoshootShots.map(s => s.aspect)).size, 6);
+  for (const s of photoshootShots) {
+    assert.ok(photoshootCategories.some(c => c.id === s.category));
+    assert.ok(s.usage && s.camera && s.direction);
+    assert.match(photoshootPrompt(s, 'Keep the same source cast and light.'), /Intended use:/);
+    assert.ok(generationSizes[s.aspect]);
+  }
+  assert.ok(photoshootPasses.every(p => p.shotIds.length === 2));
+  const history = [{stage:'compose',jobs:[
+    ...['establishing','portrait','social-feed','story-vertical','obsolete'].map(shot_id => ({shot_id,status:'ready'})),
+    {shot_id:'detail',status:'failed'}]}, {stage:'variation',jobs:[{shot_id:'breakfast',status:'ready'}]}] as never;
+  assert.equal(photographedShotIds(history).size, 4);
+  assert.deepEqual(nextPhotoshootIds(history), ['detail','breakfast']);
+  const all = [{stage:'compose',jobs:ids.map(shot_id => ({shot_id,status:'ready'}))}] as never;
+  assert.deepEqual(nextPhotoshootIds(all), []);
+});
+
+test('Placement and lifestyle photoshoots both retain scene integration without repeating the brief', async () => {
+  const {photoshootPrompt, photoshootShots} = await import('../lib/photoshoot.ts');
+  const brief = 'One reader beside the exact unit in soft mountain light.';
+  const assessment = 'Source reference 1 is a fixed curbside view; retain its landmark spacing.';
+  for (const lifestyle of [false, true]) {
+    const prompt = buildPrompt('compose', brief, 0,
+      lifestyle ? photoshootPrompt(photoshootShots[1], '', assessment) : assessment,
+      lifestyle, lifestyle);
+    for (const rule of [/load-bearing ground plane/, /compact contact shadows/,
+      /Update reflections in glass/, /studio\/dealer lighting/, /white balance/,
+      /grain, atmospheric depth/, /distance-dependent sharpness/, /Occlusion must follow physical depth/])
+      assert.match(prompt, rule);
+    assert.equal(prompt.split(brief).length - 1, 1);
+    assert.equal(prompt.split(assessment).length - 1, 1);
+    if (lifestyle) {
+      assert.match(prompt, /ASSIGNED SHOT — A moment together/);
+      assert.doesNotMatch(prompt, /This is a new close camera position/);
+      assert.match(prompt, /source evidence overrides unsupported camera/);
+      assert.doesNotMatch(prompt, /Keep the backdrop camera and horizon fixed/);
+    }
+  }
+  assert.doesNotMatch(buildPrompt('people', brief, 0), /SCENE INTEGRATION/);
+});
+
+
+test('Refinement format follows the source image rather than a universal landscape default', async () => {
+  const {sourceImageAspect, generationSizes} = await import('../lib/domain.ts');
+  for (const [aspect, size] of Object.entries(generationSizes)) assert.equal(sourceImageAspect(size.width, size.height), aspect);
+  assert.equal(sourceImageAspect(1000, 1000), 'square_hd');
+  assert.equal(sourceImageAspect(null, null), 'landscape_4_3');
 });

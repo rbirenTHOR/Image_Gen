@@ -29,6 +29,34 @@
       "when": 1789270235615,
       "tag": "0003_daffy_lizard",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1789522747705,
+      "tag": "0004_gigantic_chamber",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1789527731985,
+      "tag": "0005_clever_expediter",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1789587496962,
+      "tag": "0006_perpetual_katie_power",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "6",
+      "when": 1789590612891,
+      "tag": "0007_productive_hercules",
+      "breakpoints": true
     }
   ]
 }

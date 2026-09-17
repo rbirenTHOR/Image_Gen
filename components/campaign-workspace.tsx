@@ -55,6 +55,8 @@ import {
   type Batch,
   type CampaignTurn,
   type CampaignData,
+  type ModelPack,
+  selectModelPackReferences,
 } from "@/lib/domain";
 async function api<T>(
   path: string,
@@ -130,6 +132,8 @@ function Aspect({
         <SelectItem value="landscape_16_9">Wide · 16:9</SelectItem>
         <SelectItem value="square_hd">Square · 1:1</SelectItem>
         <SelectItem value="portrait_4_3">Portrait · 3:4</SelectItem>
+        <SelectItem value="portrait_4_5">Feed · 4:5</SelectItem>
+        <SelectItem value="portrait_9_16">Story · 9:16</SelectItem>
       </SelectContent>
     </Select>
   );
@@ -152,13 +156,13 @@ function StudioHeader({
         THOR STUDIO
       </button>
       <nav aria-label="Studio navigation">
-        <button onClick={() => onNav("library")}>Library</button>
-        <button onClick={() => onNav("create")}>Create</button>
+        <button onClick={() => onNav("inventory")}>RV Inventory</button>
+        <button onClick={() => onNav("library")}>Asset Library</button>
         <button className="active" onClick={() => onNav("campaigns")}>
           Campaigns
         </button>
       </nav>
-      {children}
+      {children && <div className="campaign-topbar-actions">{children}</div>}
     </header>
   );
 }
@@ -172,10 +176,12 @@ export function CampaignHome({
   projects: Project[];
   assets: Asset[];
   onOpen: (id: string) => void;
-  onNew: () => void;
+  onNew: (presetId: string) => Promise<void>;
   onNav: (v: string) => void;
 }) {
   const [search, setSearch] = useState("");
+  const [newOpen, setNewOpen] = useState(false);
+  const [creating, setCreating] = useState(false);
   return (
     <div className="campaign-mode">
       <StudioHeader onNav={onNav} />
@@ -186,7 +192,7 @@ export function CampaignHome({
             <h1>Make room for the next idea.</h1>
             <p>Every image, every direction. Together in one campaign.</p>
           </div>
-          <Button onClick={onNew}>
+          <Button onClick={() => setNewOpen(true)}>
             <Plus />
             New campaign
           </Button>
@@ -266,6 +272,32 @@ export function CampaignHome({
           </div>
         )}
       </main>
+      <Dialog open={newOpen} onOpenChange={setNewOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Start a campaign</DialogTitle>
+            <DialogDescription>
+              Choose your RV, use an existing shoot setup or create your own, then plan the photos you need.
+            </DialogDescription>
+          </DialogHeader>
+          <p>RV → Shoot setup → Deliverables → Results</p>
+          <Button
+            disabled={creating}
+            onClick={async () => {
+              setCreating(true);
+              try {
+                await onNew("blank");
+                setNewOpen(false);
+              } finally {
+                setCreating(false);
+              }
+            }}
+          >
+            {creating ? <LoaderCircle className="spinner" /> : <Plus />}
+            Start campaign
+          </Button>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
@@ -273,18 +305,26 @@ export default function CampaignWorkspace({
   project,
   assets,
   batches,
+  modelPacks,
   onNav,
   onRefresh,
   onBatch,
   onWizard,
+  onPhotoshoot,
+  embedded = false,
+  initialInspect = null,
 }: {
   project: Project;
   assets: Asset[];
   batches: Batch[];
+  modelPacks: ModelPack[];
   onNav: (v: string) => void;
   onRefresh: () => Promise<unknown>;
   onBatch: (b: Batch) => void;
   onWizard: () => void;
+  onPhotoshoot: () => void;
+  embedded?: boolean;
+  initialInspect?: Asset | null;
 }) {
   const [data, setData] = useState<CampaignData>({ saved_ids: [], turns: [] }),
     [loading, setLoading] = useState(true),
@@ -304,8 +344,9 @@ export default function CampaignWorkspace({
     [picked, setPicked] = useState<string[]>([]),
     [pickerQuery, setPickerQuery] = useState(""),
     [saving, setSaving] = useState(false),
+    [savingPack, setSavingPack] = useState(false),
     [uploadProgress, setUploadProgress] = useState(""),
-    [inspect, setInspect] = useState<Asset | null>(null),
+    [inspect, setInspect] = useState<Asset | null>(initialInspect),
     [actual, setActual] = useState(false),
     [compare, setCompare] = useState(false),
     [checks, setChecks] = useState({ rv: false, scene: false, crop: false }),
@@ -422,6 +463,80 @@ export default function CampaignWorkspace({
     setMobilePanel("chat");
     composer.current?.focus();
   }
+  async function applyModelPack(packId: string) {
+    try {
+      if (packId === "none") {
+        await api<Project>(
+          "projects/" + project.id,
+          { model_pack_id: null },
+          "PATCH",
+        );
+        await onRefresh();
+        toast.success(
+          "Model pack disconnected. Attached references are unchanged.",
+        );
+        return;
+      }
+      const pack = modelPacks.find((item) => item.id === packId);
+      if (!pack) return;
+      const baseId = refs[0] || project.current_id || project.rv_id;
+      const base = baseId ? byId.get(baseId) : undefined;
+      const next = selectModelPackReferences(
+        pack.assets,
+        baseId,
+        base?.angle || "",
+      );
+      if (!next.length)
+        throw new Error(
+          "This model pack has no approved generation references.",
+        );
+      await api<Project>(
+        "projects/" + project.id,
+        { model_pack_id: pack.id },
+        "PATCH",
+      );
+      setRefs(next);
+      await onRefresh();
+      toast.success(
+        `${pack.name} attached with ${next.length} reference${next.length === 1 ? "" : "s"}.`,
+      );
+    } catch (e) {
+      fail(e);
+    }
+  }
+  async function saveReferencesAsPack() {
+    if (!refs.length || savingPack) return;
+    setSavingPack(true);
+    try {
+      const first = byId.get(refs[0]);
+      const label = [first?.year, first?.brand, first?.model]
+        .filter(Boolean)
+        .join(" ");
+      const pack = await api<ModelPack>("model-packs", {
+        name: label || `${project.name} references`,
+        brand: first?.brand || "",
+        model: first?.model || "",
+        model_year: first?.year || "",
+        assets: refs.map((asset_id, index) => ({
+          asset_id,
+          role: index === 0 ? "base" : "identity",
+          priority: index,
+          view: byId.get(asset_id)?.angle || "",
+        })),
+      });
+      await api<Project>(
+        "projects/" + project.id,
+        { model_pack_id: pack.id },
+        "PATCH",
+      );
+      await onRefresh();
+      toast.success(`${pack.name} saved as a reusable model pack.`);
+    } catch (e) {
+      fail(e);
+    } finally {
+      setSavingPack(false);
+    }
+  }
   function openImage(a: Asset) {
     setInspect(a);
     setChecks({ rv: false, scene: false, crop: false });
@@ -465,7 +580,7 @@ export default function CampaignWorkspace({
         {
           prompt: promptEdits[t.id] ?? t.prompt,
           aspect: aspects[t.id] ?? t.aspect,
-          count: counts[t.id] ?? 2,
+          count: counts[t.id] ?? (parseRefs(t).length ? 1 : 2),
         },
       );
       onBatch(b);
@@ -570,7 +685,7 @@ export default function CampaignWorkspace({
         {(
           b?.jobs ??
           (generating === t.id
-            ? Array.from({length:counts[t.id] ?? 2}, (_,slot) => ({
+            ? Array.from({length:counts[t.id] ?? (parseRefs(t).length ? 1 : 2)}, (_,slot) => ({
                 id: "pending" + slot,
                 status: "submitting",
                 result_asset_id: null,
@@ -681,12 +796,13 @@ export default function CampaignWorkspace({
   }
   return (
     <div className="campaign-mode">
-      <StudioHeader onNav={onNav}>
+      {!embedded && <StudioHeader onNav={onNav}>
+        <Button onClick={onPhotoshoot}>Plan photoshoot</Button>
         <Button variant="outline" onClick={onWizard}>
           <SlidersHorizontal />
           Build a scene
         </Button>
-      </StudioHeader>
+      </StudioHeader>}
       <div className="campaign-mobile-switch">
         <Tabs value={mobilePanel} onValueChange={setMobilePanel}>
           <TabsList>
@@ -905,7 +1021,7 @@ export default function CampaignWorkspace({
                     }
                     key={a.id}
                   >
-                    <div className="campaign-image-visual">
+                    <div className="campaign-image-visual" style={a.width && a.height ? {aspectRatio: `${a.width} / ${a.height}`} : undefined}>
                       <Photo asset={a} />
                       <button
                         className="image-open-target"
@@ -963,6 +1079,7 @@ export default function CampaignWorkspace({
                               : a.quality === "max"
                                 ? "2.5 Max"
                                 : a.kind}
+                        {a.width > 0 && a.height > 0 ? ` · ${a.width} × ${a.height}` : ""}
                       </span>
                     </div>
                   </article>
@@ -1160,7 +1277,7 @@ export default function CampaignWorkspace({
                                 }
                               />
                               <label className="field-label" htmlFor={"image-count-"+t.id}>Number of images</label>
-                              <select id={"image-count-"+t.id} className="image-count-select" value={counts[t.id] ?? 2} disabled={!!generating} onChange={e=>setCounts(s=>({...s,[t.id]:Number(e.target.value)}))}>
+                              <select id={"image-count-"+t.id} className="image-count-select" value={counts[t.id] ?? (parseRefs(t).length ? 1 : 2)} disabled={!!generating} onChange={e=>setCounts(s=>({...s,[t.id]:Number(e.target.value)}))}>
                                 {[1,2,3,4].map(n=><option key={n} value={n}>{n} image{n===1?"":"s"}</option>)}
                               </select>
                               <Button
@@ -1168,7 +1285,7 @@ export default function CampaignWorkspace({
                                 onClick={() => generate(t)}
                                 disabled={
                                   !!generating ||
-                                  busyJobs.length + (counts[t.id] ?? 2) > 8 ||
+                                  busyJobs.length + (counts[t.id] ?? (parseRefs(t).length ? 1 : 2)) > 8 ||
                                   (promptEdits[t.id] ?? t.prompt).trim()
                                     .length < 10
                                 }
@@ -1178,12 +1295,12 @@ export default function CampaignWorkspace({
                                 ) : (
                                   <Sparkles />
                                 )}
-                                Generate {counts[t.id] ?? 2} image{(counts[t.id] ?? 2) === 1 ? "" : "s"}
+                                Generate {counts[t.id] ?? (parseRefs(t).length ? 1 : 2)} image{(counts[t.id] ?? (parseRefs(t).length ? 1 : 2)) === 1 ? "" : "s"}
                                 <ArrowUp />
                               </Button>
                               <small>
                                 {generationSizeLabel(aspects[t.id] ?? t.aspect)}
-                                . {counts[t.id] ?? 2} Max images via fal. Higher resolution
+                                . {counts[t.id] ?? (parseRefs(t).length ? 1 : 2)} Max images via fal. Higher resolution
                                 takes longer and may cost more.
                               </small>
                             </>
@@ -1221,6 +1338,59 @@ export default function CampaignWorkspace({
             <div ref={chatEnd} />
           </div>
           <div className="chat-composer-wrap">
+            {(modelPacks.some((pack) => pack.status === "active") ||
+              refs.length > 1) && (
+              <div className="model-pack-control">
+                <Select
+                  value={project.model_pack_id || "none"}
+                  onValueChange={applyModelPack}
+                >
+                  <SelectTrigger
+                    className="model-pack-select"
+                    aria-label="Campaign model pack"
+                  >
+                    <SelectValue placeholder="Choose a model pack" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">No model pack</SelectItem>
+                    {modelPacks
+                      .filter((pack) => pack.status === "active")
+                      .map((pack) => (
+                        <SelectItem key={pack.id} value={pack.id}>
+                          {pack.name} · {pack.assets.length} images
+                        </SelectItem>
+                      ))}
+                  </SelectContent>
+                </Select>
+                {refs.length > 1 && !project.model_pack_id && (
+                  <Button
+                    className="model-pack-save"
+                    variant="ghost"
+                    size="sm"
+                    disabled={savingPack}
+                    onClick={saveReferencesAsPack}
+                  >
+                    {savingPack ? (
+                      <LoaderCircle className="spinner" />
+                    ) : (
+                      <Bookmark />
+                    )}
+                    Save as model pack
+                  </Button>
+                )}
+                {project.model_pack_id && (
+                  <Button
+                    className="model-pack-save"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => applyModelPack(project.model_pack_id!)}
+                  >
+                    <ImagePlus />
+                    Use pack references
+                  </Button>
+                )}
+              </div>
+            )}
             {refs.length > 0 && (
               <div className="composer-references">
                 {refs.map((id, i) => {

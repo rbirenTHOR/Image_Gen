@@ -1,3 +1,4 @@
+import { getFlow, saveFlow, generateFlow } from "@/lib/server/campaign-flow";
 import { ensureNatureLibrary, imageObject } from "@/lib/server/nature-library";
 import { searchLandscapes, importLandscape } from '@/lib/server/landscape-discovery';
 import {
@@ -9,6 +10,7 @@ import {
   approveCampaignImage,
 } from "@/lib/server/campaigns";
 import { providerFetch } from "@/lib/server/provider-fetch";
+import { imageDimensions } from "@/lib/image-metadata";
 import { z } from "zod";
 import {
   authorize,
@@ -33,6 +35,16 @@ import {
   retryJob,
 } from "@/lib/server/jobs";
 import {
+  createModelPack,
+  createModelPackSchema,
+  getModelPack,
+  listModelPacks,
+  modelPackAssignmentSchema,
+  replaceModelPackAssets,
+  updateModelPack,
+  updateModelPackSchema,
+} from "@/lib/server/model-packs";
+import {
   assetUploadSchema,
   stages,
   photographicBrief,
@@ -42,9 +54,13 @@ import {
   type Project,
   type Batch,
 } from "@/lib/domain";
+import {
+  getCampaignPreset,
+  resolveCampaignPreset,
+} from "@/lib/campaign-presets";
 export const dynamic = "force-dynamic";
 async function state(owner: string) {
-  const [assets, projects, memberships] = await Promise.all([
+  const [assets, projects, memberships, modelPacks] = await Promise.all([
     all<Asset>(
       "SELECT * FROM assets WHERE owner_id=? OR owner_id=? ORDER BY created_at DESC",
       owner,
@@ -58,6 +74,7 @@ async function state(owner: string) {
       "SELECT c.asset_id,c.project_id FROM campaign_assets c JOIN projects p ON p.id=c.project_id WHERE p.owner_id=? AND c.removed_at IS NULL",
       owner,
     ),
+    listModelPacks(owner),
   ]);
   return {
     assets: assets.map((a) => ({
@@ -67,20 +84,37 @@ async function state(owner: string) {
         .map((m) => m.project_id),
     })),
     projects,
+    model_packs: modelPacks,
     connections: {
       fal: !!(runtime().FAL_KEY || process.env.FAL_KEY),
       openai: !!(runtime().OPENAI_API_KEY || process.env.OPENAI_API_KEY),
     },
   };
 }
-async function createProject(owner: string, name: string) {
+async function createProject(owner: string, name: string, presetId = "") {
   const id = crypto.randomUUID(),
     now = Date.now();
+  const preset = getCampaignPreset(presetId);
+  const candidates = preset
+    ? await all<Asset>(
+        "SELECT * FROM assets WHERE owner_id=? OR owner_id=? ORDER BY created_at DESC",
+        owner,
+        "shared",
+      )
+    : [];
+  const resolved = preset
+    ? resolveCampaignPreset(preset, candidates)
+    : { rv: undefined, landscape: undefined };
+  const step = resolved.landscape ? "compose" : resolved.rv ? "landscape" : "rv";
   await run(
-    "INSERT INTO projects(id,owner_id,name,created_at,updated_at) VALUES(?,?,?,?,?)",
+    "INSERT INTO projects(id,owner_id,name,step,rv_id,landscape_id,preset_id,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?)",
     id,
     owner,
     name,
+    step,
+    resolved.rv?.id ?? null,
+    resolved.landscape?.id ?? null,
+    preset?.id ?? "",
     now,
     now,
   );
@@ -142,8 +176,42 @@ async function handle(
       method === "POST"
     )
       return json(await approveCampaignImage(id, owner, await request.json()));
+    if (resource === "projects" && action === "workflow") {
+      if (method === "GET") return json(await getFlow(id, owner));
+      if (method === "PUT") return json(await saveFlow(id, owner, await request.json()));
+      if (method === "POST" && path[3] === "generate") return json(await generateFlow(id, owner, await request.json()), 201);
+    }
     if (resource === "state" && method === "GET")
       return json(await state(owner));
+    if (resource === "model-packs" && method === "GET" && !id)
+      return json(await listModelPacks(owner));
+    if (resource === "model-packs" && method === "POST" && !id)
+      return json(
+        await createModelPack(
+          owner,
+          createModelPackSchema.parse(await request.json()),
+        ),
+        201,
+      );
+    if (resource === "model-packs" && method === "PATCH" && id && !action)
+      return json(
+        await updateModelPack(
+          id,
+          owner,
+          updateModelPackSchema.parse(await request.json()),
+        ),
+      );
+    if (
+      resource === "model-packs" &&
+      action === "assets" &&
+      method === "PUT"
+    ) {
+      const data = z
+        .object({ assets: z.array(modelPackAssignmentSchema).max(200) })
+        .strict()
+        .parse(await request.json());
+      return json(await replaceModelPackAssets(id, owner, data.assets));
+    }
     if (resource === "media" && method === "GET") {
       const a = await getAsset(id, owner);
       const download = new URL(request.url).searchParams.has("download");
@@ -187,13 +255,14 @@ async function handle(
         mime = detectImage(bytes);
       if (!mime)
         throw new ApiError(400, "Upload a valid JPG, PNG or WebP image.");
+      const dimensions = imageDimensions(bytes, mime);
       const assetId = crypto.randomUUID(),
         key = "uploads/" + assetId;
       await runtime().BUCKET.put(key, bytes, {
         httpMetadata: { contentType: mime },
       });
       await run(
-        "INSERT INTO assets(id,owner_id,kind,name,brand,model,year,angle,environment,lighting,source,r2_key,mime,in_library,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        "INSERT INTO assets(id,owner_id,kind,name,brand,model,year,angle,environment,lighting,source,r2_key,mime,width,height,in_library,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
         assetId,
         owner,
         data.kind,
@@ -207,6 +276,8 @@ async function handle(
         "uploaded",
         key,
         mime,
+        dimensions.width,
+        dimensions.height,
         1,
         Date.now(),
       );
@@ -234,9 +305,15 @@ async function handle(
     }
     if (resource === "projects" && method === "POST" && !id) {
       const data = z
-        .object({ name: z.string().trim().min(1).max(100) })
+        .object({
+          name: z.string().trim().min(1).max(100),
+          preset_id: z.string().trim().max(100).optional(),
+        })
+        .strict()
         .parse(await request.json());
-      return json(await createProject(owner, data.name), 201);
+      if (data.preset_id && !getCampaignPreset(data.preset_id))
+        throw new ApiError(400, "Campaign preset not found.");
+      return json(await createProject(owner, data.name, data.preset_id), 201);
     }
     if (resource === "projects" && method === "PATCH" && !action) {
       const p = await getProject(id, owner);
@@ -244,10 +321,14 @@ async function handle(
         .object({
           name: z.string().trim().min(1).max(100).optional(),
           step: z.enum(stages).optional(),
+          model_pack_id: z.string().uuid().nullable().optional(),
         })
         .strict()
         .parse(await request.json());
       const step = data.step ?? p.step;
+      const modelPackId =
+        data.model_pack_id === undefined ? p.model_pack_id : data.model_pack_id;
+      if (modelPackId) await getModelPack(modelPackId, owner);
       if (step !== "rv" && !p.rv_id)
         throw new ApiError(400, "Choose an RV first.");
       if (["compose", "lifestyle", "review"].includes(step) && !p.landscape_id)
@@ -255,9 +336,10 @@ async function handle(
       if (["lifestyle", "review"].includes(step) && !p.composition_id)
         throw new ApiError(400, "Choose a composition first.");
       await run(
-        "UPDATE projects SET name=?,step=?,updated_at=?,version=version+1 WHERE id=? AND owner_id=?",
+        "UPDATE projects SET name=?,step=?,model_pack_id=?,updated_at=?,version=version+1 WHERE id=? AND owner_id=?",
         data.name ?? p.name,
         step,
+        modelPackId,
         Date.now(),
         id,
         owner,
@@ -353,14 +435,21 @@ async function handle(
           );
         fields = { ...fields, current: a.id, step: "lifestyle" };
       }
+      const workflow = p.workflow_json ? JSON.parse(p.workflow_json) : null;
+      if (workflow) {
+        if (workflow.rv_id !== fields.rv) workflow.identity_ids = [];
+        workflow.rv_id = fields.rv;
+        workflow.scene_id = fields.landscape;
+      }
       const result = await run(
-        "UPDATE projects SET rv_id=?,landscape_id=?,composition_id=?,current_id=?,step=?,updated_at=?,version=version+1 WHERE id=? AND owner_id=? AND version=?",
+        "UPDATE projects SET rv_id=?,landscape_id=?,composition_id=?,current_id=?,step=?,updated_at=?,version=version+1,workflow_json=?,workflow_revision=workflow_revision+1 WHERE id=? AND owner_id=? AND version=?",
         fields.rv,
         fields.landscape,
         fields.composition,
         fields.current,
         fields.step,
         Date.now(),
+        workflow ? JSON.stringify(workflow) : "",
         id,
         owner,
         p.version,
@@ -386,7 +475,7 @@ async function handle(
     if (resource === "projects" && action === "batches" && method === "GET") {
       await getProject(id, owner);
       const batches = await all<{ id: string }>(
-        "SELECT id FROM batches WHERE project_id=? AND owner_id=? ORDER BY created_at DESC LIMIT 40",
+        "SELECT id FROM batches WHERE project_id=? AND owner_id=? ORDER BY created_at DESC",
         id,
         owner,
       );
@@ -526,3 +615,4 @@ async function handle(
 export const GET = handle;
 export const POST = handle;
 export const PATCH = handle;
+export const PUT = handle;
