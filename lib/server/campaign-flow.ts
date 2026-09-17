@@ -1,6 +1,7 @@
 import { z } from "zod";
 import {
   flowSchema,
+  setupProblem,
   flowPrompt,
   plannedShot,
   resolvedShot,
@@ -52,6 +53,13 @@ export async function getFlow(
       scene_id: p.landscape_id,
       identity_ids: [],
       prop_ids: [],
+      setup: p.landscape_id
+        ? {
+            mode: "custom",
+            name: "Custom setup",
+            derived_from: "Earlier campaign",
+          }
+        : { mode: "unselected" },
       scene_mode: "look",
       people: "",
       props: "",
@@ -61,9 +69,17 @@ export async function getFlow(
           .split("Create two clearly different shots:")[0]
           .trim() ||
         "",
-      shots: (known.length ? known : ["establishing", "portrait"]).map(
-        plannedShot,
-      ),
+      shots: (known.length
+        ? known
+        : [
+            "establishing",
+            "portrait",
+            "detail",
+            "action",
+            "social-feed",
+            "story-vertical",
+          ]
+      ).map(plannedShot),
     },
   };
 }
@@ -96,6 +112,10 @@ export async function saveFlow(pid: string, owner: string, raw: unknown) {
     })
     .strict()
     .parse(raw);
+  if (data.state.setup?.mode === "existing") {
+    const problem = setupProblem(data.state);
+    if (problem) throw new ApiError(400, problem);
+  }
   await validateRefs(data.state, owner);
   const result = await run(
     "UPDATE projects SET workflow_json=?,workflow_revision=workflow_revision+1,step=CASE WHEN ? IS NULL THEN 'rv' WHEN ? IS NULL THEN 'landscape' WHEN composition_id IS NULL OR rv_id IS NOT ? OR landscape_id IS NOT ? THEN 'compose' ELSE step END,composition_id=CASE WHEN rv_id IS NOT ? OR landscape_id IS NOT ? THEN NULL ELSE composition_id END,current_id=CASE WHEN rv_id IS NOT ? OR landscape_id IS NOT ? THEN NULL ELSE current_id END,rv_id=?,landscape_id=?,updated_at=?,version=version+1 WHERE id=? AND owner_id=? AND workflow_revision=?",
@@ -163,6 +183,8 @@ export async function generateFlow(pid: string, owner: string, raw: unknown) {
       "Save the latest campaign settings before generating.",
     );
   const s = doc.state;
+  const problem = setupProblem(s);
+  if (problem) throw new ApiError(400, problem);
   await validateRefs(s, owner);
   if (!s.rv_id || !s.scene_id)
     throw new ApiError(400, "Choose an RV and setting first.");

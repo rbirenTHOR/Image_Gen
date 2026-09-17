@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { photoshootShots, type PhotoshootShot } from "./photoshoot";
+import { photoshootShots, type PhotoshootShot } from "./photoshoot.ts";
 import type { Batch } from "./domain";
 export const flowSections = ["rv", "scene", "plan", "results"] as const;
 export const aspectOptions = [
@@ -26,9 +26,40 @@ const shotSchema = z
     direction: z.string().max(4000),
   })
   .strict();
+// A setup is copied as one unit. Its source revision is provenance, never a live link.
+const sceneSetupSchema = z
+  .object({
+    scene_id: z.string().max(100).nullable(),
+    scene_mode: z.enum(["look", "place"]),
+    brief: z.string().max(6000),
+    people: z.string().max(1000),
+    props: z.string().max(1000),
+    prop_ids: z.array(z.string().max(100)).max(1),
+  })
+  .strict();
+const setupSchema = z.discriminatedUnion("mode", [
+  z.object({ mode: z.literal("unselected") }).strict(),
+  z
+    .object({
+      mode: z.literal("custom"),
+      name: z.string().max(200),
+      derived_from: z.string().max(300).optional(),
+    })
+    .strict(),
+  z
+    .object({
+      mode: z.literal("existing"),
+      name: z.string().max(200),
+      source: z.string().max(300),
+      snapshot: sceneSetupSchema,
+    })
+    .strict(),
+]);
+export type SceneSetup = z.infer<typeof sceneSetupSchema>;
 export const flowSchema = z
   .object({
     section: z.enum(flowSections),
+    setup: setupSchema.optional(),
     brief: z.string().max(6000),
     rv_id: z.string().max(100).nullable(),
     scene_id: z.string().max(100).nullable(),
@@ -190,3 +221,85 @@ export const lifestyleSetups = [
       "Simple camp chairs, a blanket and dog leashes when walking; preserve restrained source styling.",
   },
 ];
+
+export function sceneSetup(state: SceneSetup): SceneSetup {
+  const { scene_id, scene_mode, brief, people, props, prop_ids } = state;
+  return {
+    scene_id,
+    scene_mode,
+    brief,
+    people,
+    props,
+    prop_ids: [...prop_ids],
+  };
+}
+export function setupMode(state: CampaignFlowState) {
+  return state.setup?.mode ?? (state.scene_id ? "custom" : "unselected");
+}
+export function setupProblem(state: CampaignFlowState): string | null {
+  if (setupMode(state) === "unselected")
+    return "Choose an existing setup or create a custom setup first.";
+  if (
+    state.setup?.mode === "existing" &&
+    JSON.stringify(sceneSetup(state)) !==
+      JSON.stringify(sceneSetup(state.setup.snapshot))
+  )
+    return "This saved setup has conflicting edits. Customize the setup before changing its direction.";
+  return null;
+}
+// Keep deliverable shapes, but never carry scene-specific directions into a new setup.
+export function resetShotDirections(shots: PlannedShot[]): PlannedShot[] {
+  return shots.map((s) => {
+    const base = photoshootShots.find((p) => p.id === s.role);
+    return {
+      ...s,
+      label: base?.label ?? "Custom composition",
+      direction:
+        base?.direction ??
+        "Create a distinct composition in the selected setup. Follow its people, activity, props and photographic direction.",
+    };
+  });
+}
+export function applyExistingSetup(
+  state: CampaignFlowState,
+  name: string,
+  source: string,
+  setup: SceneSetup,
+): CampaignFlowState {
+  const snapshot = sceneSetup(setup);
+  return {
+    ...state,
+    ...snapshot,
+    setup: { mode: "existing", name, source, snapshot },
+    shots: resetShotDirections(state.shots),
+  };
+}
+export function startCustomSetup(
+  state: CampaignFlowState,
+  scene_id: string | null = null,
+): CampaignFlowState {
+  return {
+    ...state,
+    scene_id,
+    scene_mode: "place",
+    brief: "",
+    people: "",
+    props: "",
+    prop_ids: [],
+    setup: { mode: "custom", name: "Custom setup" },
+    shots: resetShotDirections(state.shots),
+  };
+}
+export function customizeSetup(state: CampaignFlowState): CampaignFlowState {
+  return {
+    ...state,
+    setup: {
+      mode: "custom",
+      name: "Custom setup",
+      derived_from:
+        state.setup?.mode === "existing"
+          ? state.setup.name
+          : "Previous custom setup",
+    },
+  };
+}

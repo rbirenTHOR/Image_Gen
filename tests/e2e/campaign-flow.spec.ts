@@ -1,6 +1,6 @@
 import { test, expect } from "@playwright/test";
 import type { Batch, Job } from "../../lib/domain";
-import type { FlowDocument } from "../../lib/campaign-flow";
+import { plannedShot, type FlowDocument } from "../../lib/campaign-flow";
 
 test("Saved campaign plan controls snapshots, two-image billing, draft retention and conflict protection", async ({
   request,
@@ -20,6 +20,8 @@ test("Saved campaign plan controls snapshots, two-image billing, draft retention
   let doc = await get();
   doc.state = {
     ...doc.state,
+    setup: { mode: "custom", name: "Custom setup" },
+    shots: [plannedShot("establishing"), plannedShot("portrait")],
     rv_id: "sample-rv",
     scene_id: "mountain-stillness",
     brief:
@@ -220,6 +222,9 @@ test("Campaign walkthrough saves direction and plan, generates two distinct form
     .getByRole("button", { name: "Continue to scene", exact: true })
     .click();
   await page
+    .getByRole("button", { name: "Create a custom setup", exact: true })
+    .click();
+  await page
     .getByRole("button", { name: /Mountain stillness/i })
     .first()
     .click();
@@ -235,7 +240,7 @@ test("Campaign walkthrough saves direction and plan, generates two distinct form
     .getByRole("button", { name: "Continue to shoot plan", exact: true })
     .click();
   await page
-    .getByLabel("Add a shoot package", { exact: true })
+    .getByLabel("Choose deliverables", { exact: true })
     .selectOption("1");
   await expect(
     page.getByText("6 requested photos", { exact: false }),
@@ -296,7 +301,7 @@ test("Campaign walkthrough saves direction and plan, generates two distinct form
   await page.keyboard.press("Escape");
   await page.getByRole("button", { name: "Close refinements" }).click();
   await page
-    .getByRole("button", { name: "2 Scene & lifestyle", exact: true })
+    .getByRole("button", { name: "2 Shoot setup", exact: true })
     .click();
   await expect(
     page.getByLabel("Campaign direction", { exact: true }),
@@ -328,6 +333,7 @@ test("A lost generation response survives reload and recovers the same paid requ
   ).json();
   const path = "/api/studio/projects/" + project.id + "/workflow";
   const doc = await (await page.request.get(path)).json();
+  doc.state.setup = { mode: "custom", name: "Custom setup" };
   doc.state.rv_id = "sample-rv";
   doc.state.scene_id = "mountain-stillness";
   doc.state.section = "plan";
@@ -400,7 +406,10 @@ test("Browser Back flushes the latest campaign edit before the autosave delay", 
     .click();
   await page.getByRole("button", { name: /History save check/ }).click();
   await page
-    .getByRole("button", { name: "2 Scene & lifestyle", exact: true })
+    .getByRole("button", { name: "2 Shoot setup", exact: true })
+    .click();
+  await page
+    .getByRole("button", { name: "Create a custom setup", exact: true })
     .click();
   await page
     .getByLabel("Campaign direction", { exact: true })
@@ -419,4 +428,77 @@ test("Browser Back flushes the latest campaign edit before the autosave delay", 
         ).state.brief,
     )
     .toBe("Keep this latest direction when I immediately navigate Back.");
+});
+
+test("Existing setup snapshot rejects contradictory fields and generation waits for a setup", async ({
+  request,
+}) => {
+  const headers = { Cookie: "__sites_local_auth=1" };
+  await request.post("/api/studio/bootstrap", { headers, data: {} });
+  const project = await (
+    await request.post("/api/studio/projects", {
+      headers,
+      data: { name: "Setup integrity contract" },
+    })
+  ).json();
+  const path = "/api/studio/projects/" + project.id + "/workflow";
+  let doc = await (await request.get(path, { headers })).json();
+  expect(doc.state.shots).toHaveLength(6);
+  const unselected = await request.post(path + "/generate", {
+    headers,
+    data: {
+      id: crypto.randomUUID(),
+      revision: doc.revision,
+      shot_ids: ["establishing"],
+    },
+  });
+  expect(unselected.status()).toBe(400);
+  const snapshot = {
+    scene_id: "mountain-stillness",
+    scene_mode: "place",
+    brief: "Soft forest light",
+    people: "One reader, no dogs",
+    props: "One chair, no bikes",
+    prop_ids: [],
+  };
+  doc.state = {
+    ...doc.state,
+    ...snapshot,
+    rv_id: "sample-rv",
+    setup: {
+      mode: "existing",
+      name: "Mountain reading",
+      source: "Fixture revision 1",
+      snapshot,
+    },
+  };
+  let response = await request.put(path, { headers, data: doc });
+  expect(response.ok(), await response.text()).toBe(true);
+  doc = await response.json();
+  for (const patch of [
+    { scene_id: "alpine-shoreline" },
+    { people: "Two cyclists" },
+    { props: "Bikes" },
+    { brief: "Desert sunset" },
+    { scene_mode: "look" },
+    { prop_ids: ["bad-reference"] },
+  ]) {
+    response = await request.put(path, {
+      headers,
+      data: { ...doc, state: { ...doc.state, ...patch } },
+    });
+    expect(response.status()).toBe(400);
+    expect((await response.json()).error).toContain("conflicting edits");
+  }
+  expect((await (await request.get(path, { headers })).json()).state).toEqual(
+    doc.state,
+  );
+  doc.state.setup = {
+    mode: "custom",
+    name: "Custom setup",
+    derived_from: "Mountain reading",
+  };
+  doc.state.people = "Two adults reading";
+  response = await request.put(path, { headers, data: doc });
+  expect(response.ok(), await response.text()).toBe(true);
 });

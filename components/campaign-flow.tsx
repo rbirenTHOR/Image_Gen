@@ -16,6 +16,12 @@ import {
 } from "@/lib/domain";
 import {
   lifestyleSetups,
+  sceneSetup,
+  setupMode,
+  setupProblem,
+  applyExistingSetup,
+  startCustomSetup,
+  customizeSetup,
   flowSchema,
   flowSections,
   aspectOptions,
@@ -117,6 +123,7 @@ function FlowEditor({ initial, ...p }: Props & { initial: FlowDocument }) {
     [selected, setSelected] = useState<string[]>([]),
     [query, setQuery] = useState(""),
     [sceneSource, setSceneSource] = useState("library"),
+    [choosingSetup, setChoosingSetup] = useState(false),
     [discovery, setDiscovery] = useState(false),
     [review, setReview] = useState<Asset | null>(null),
     [advanced, setAdvanced] = useState(false),
@@ -133,6 +140,45 @@ function FlowEditor({ initial, ...p }: Props & { initial: FlowDocument }) {
     failed.current = false;
     if (update.section && update.section !== state.section) setQuery("");
     setState((s) => ({ ...s, ...update }));
+  }
+  const mode = setupMode(state);
+  function replaceSetup(next: CampaignFlowState) {
+    patch(next);
+    setSelected([]);
+    setQuery("");
+    setDiscovery(false);
+    setChoosingSetup(false);
+    setCatalog("");
+  }
+  function chooseScene(id: string) {
+    if (id !== state.scene_id) replaceSetup(startCustomSetup(state, id));
+  }
+  async function reuseCampaign(id: string) {
+    if (!id) return;
+    setBusy(true);
+    setError("");
+    try {
+      const prior = await call<FlowDocument>("projects/" + id + "/workflow");
+      if (!prior.state.scene_id)
+        throw new Error(
+          "That campaign has no saved setting. Choose another setup.",
+        );
+      const problem = setupProblem(prior.state);
+      if (problem) throw new Error(problem);
+      const campaign = p.projects.find((c) => c.id === id)!;
+      replaceSetup(
+        applyExistingSetup(
+          state,
+          campaign.name,
+          `${id} · revision ${prior.revision}`,
+          sceneSetup(prior.state),
+        ),
+      );
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
   }
   function save(value: CampaignFlowState): Promise<FlowDocument> {
     const text = JSON.stringify(value);
@@ -258,7 +304,7 @@ function FlowEditor({ initial, ...p }: Props & { initial: FlowDocument }) {
         kind === "rv"
           ? { rv_id: a.id, identity_ids: [] }
           : kind === "landscape"
-            ? { scene_id: a.id }
+            ? startCustomSetup(state, a.id)
             : { prop_ids: [a.id] },
       );
     } catch (e) {
@@ -307,7 +353,7 @@ function FlowEditor({ initial, ...p }: Props & { initial: FlowDocument }) {
 
   const title = {
     rv: "Choose the RV.",
-    scene: "Set the scene. Bring it to life.",
+    scene: "Choose your shoot setup.",
     plan: "Direct the whole shoot.",
     results: "Review your campaign.",
   }[state.section];
@@ -342,7 +388,7 @@ function FlowEditor({ initial, ...p }: Props & { initial: FlowDocument }) {
         </nav>
       </header>
       <main className="flow-main">
-        {pending && (
+        {pending && !busy && (
           <div className="flow-note">
             <p>
               The last generation response has not been confirmed. Recover it
@@ -422,7 +468,7 @@ function FlowEditor({ initial, ...p }: Props & { initial: FlowDocument }) {
               onClick={() => patch({ section })}
             >
               <span>{i + 1}</span>
-              {["RV", "Scene & lifestyle", "Shoot plan", "Results"][i]}
+              {["RV", "Shoot setup", "Deliverables", "Results"][i]}
             </button>
           ))}
         </nav>
@@ -452,7 +498,7 @@ function FlowEditor({ initial, ...p }: Props & { initial: FlowDocument }) {
                   {
                     rv: "Start with one real unit. Its photographs define the vehicle in every image.",
                     scene:
-                      "Borrow the location and photographic character from a real shoot, then direct the people and activity.",
+                      "Reuse a complete shoot setup, or create a custom setting and direction.",
                     plan: "Choose the deliverables you need. Each shot has its own framing, purpose and native image shape.",
                     results:
                       "Every generated image is kept as a draft. Review identity, lifestyle and framing before approval.",
@@ -562,183 +608,366 @@ function FlowEditor({ initial, ...p }: Props & { initial: FlowDocument }) {
           )}
           {state.section === "scene" && (
             <>
-              <div className="flow-toolbar" aria-label="Lifestyle setups">
-                {lifestyleSetups.map((setup) => {
-                  const source = p.assets.find(
-                    (a) =>
-                      a.kind === "landscape" && a.name.startsWith(setup.match),
-                  );
-                  return source ? (
-                    <Button
-                      key={setup.name}
-                      variant="outline"
-                      onClick={() =>
-                        patch({
-                          scene_id: source.id,
-                          scene_mode: "look",
-                          brief: setup.brief,
-                          people: setup.people,
-                          props: setup.props,
-                        })
-                      }
-                    >
-                      {setup.name}
-                    </Button>
-                  ) : null;
-                })}
-              </div>
-              <div className="flow-toolbar">
+              <div className="flow-setup-paths" aria-label="Setup approach">
                 <Button
-                  variant={sceneSource === "library" ? "default" : "outline"}
-                  onClick={() => setSceneSource("library")}
-                >
-                  Settings & shoot references
-                </Button>
-                <Button
-                  variant={sceneSource === "campaigns" ? "default" : "outline"}
-                  onClick={() => setSceneSource("campaigns")}
-                >
-                  Previous campaigns
-                </Button>
-                <Button
-                  variant="outline"
-                  onClick={() => setDiscovery(!discovery)}
-                >
-                  Find a real location
-                </Button>
-                <label className="flow-upload">
-                  Upload setting
-                  <input
-                    aria-label="Upload setting"
-                    type="file"
-                    accept="image/jpeg,image/png,image/webp"
-                    disabled={busy}
-                    onChange={(e) =>
-                      void upload(e.target.files?.[0], "landscape")
-                    }
-                  />
-                </label>
-              </div>
-              {discovery && (
-                <LandscapeDiscovery
-                  onBack={() => setDiscovery(false)}
-                  canUse
-                  onImported={async (a, use) => {
-                    await p.onRefresh();
-                    if (use) {
-                      patch({ scene_id: a.id });
-                      setDiscovery(false);
-                    }
+                  variant={
+                    mode === "existing" || choosingSetup ? "default" : "outline"
+                  }
+                  onClick={() => {
+                    setChoosingSetup(true);
+                    setQuery("");
                   }}
-                />
+                >
+                  Use an existing setup
+                </Button>
+                <Button
+                  variant={
+                    mode === "custom" && !choosingSetup ? "default" : "outline"
+                  }
+                  onClick={() => {
+                    if (mode === "custom") setChoosingSetup(false);
+                    else replaceSetup(startCustomSetup(state));
+                  }}
+                >
+                  {mode === "existing"
+                    ? "Start a new custom setup"
+                    : "Create a custom setup"}
+                </Button>
+              </div>
+              {(mode === "unselected" || choosingSetup) && (
+                <section
+                  className="flow-setup-picker"
+                  aria-label="Existing setups"
+                >
+                  <h3>Choose a complete shoot setup</h3>
+                  <p>
+                    Reuse its setting, light, people and props with your
+                    selected RV. Choosing a setup replaces the previous scene
+                    direction and resets shot instructions; existing photos stay
+                    in Results.
+                  </p>
+                  <div className="flow-assets">
+                    {lifestyleSetups.map((setup) => {
+                      const source = p.assets.find(
+                        (a) =>
+                          a.kind === "landscape" &&
+                          a.name.startsWith(setup.match),
+                      );
+                      return source ? (
+                        <button
+                          className="flow-asset"
+                          key={setup.name}
+                          onClick={() =>
+                            replaceSetup(
+                              applyExistingSetup(
+                                state,
+                                setup.name,
+                                `Jayco setup: ${setup.name}`,
+                                {
+                                  scene_id: source.id,
+                                  scene_mode: "place",
+                                  brief: setup.brief,
+                                  people: setup.people,
+                                  props: setup.props,
+                                  prop_ids: [],
+                                },
+                              ),
+                            )
+                          }
+                        >
+                          <img
+                            src={source.thumbnail_url || source.url}
+                            alt=""
+                            loading="lazy"
+                          />
+                          <strong>{setup.name}</strong>
+                          <small>{setup.people}</small>
+                        </button>
+                      ) : null;
+                    })}
+                  </div>
+                  <label className="flow-field">
+                    Reuse a previous campaign setup
+                    <select
+                      aria-label="Reuse a previous campaign setup"
+                      value=""
+                      onChange={(e) => void reuseCampaign(e.target.value)}
+                    >
+                      <option value="">Choose a saved campaign…</option>
+                      {p.projects
+                        .filter((c) => c.id !== p.project.id && c.landscape_id)
+                        .map((c) => (
+                          <option key={c.id} value={c.id}>
+                            {c.name}
+                          </option>
+                        ))}
+                    </select>
+                  </label>
+                  <p>
+                    A saved copy of the chosen campaign’s scene direction is
+                    used. Its RV and output photos are not imported.
+                  </p>
+                  {mode !== "unselected" && (
+                    <Button
+                      variant="ghost"
+                      onClick={() => setChoosingSetup(false)}
+                    >
+                      Keep current setup
+                    </Button>
+                  )}
+                </section>
               )}
-              <Input
-                aria-label="Search settings"
-                placeholder="Search Jayco shoots, landscapes, locations…"
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-              />
-              <div className="flow-assets">
-                {p.assets
-                  .filter((a) =>
-                    sceneSource === "library"
-                      ? a.kind === "landscape"
-                      : !!a.project_id &&
-                        [
-                          "composition",
-                          "lifestyle",
-                          "campaign",
-                          "variation",
-                        ].includes(a.kind),
-                  )
-                  .filter(named)
-                  .map((a) => (
-                    <AssetChoice
-                      key={a.id}
-                      asset={a}
-                      selected={a.id === state.scene_id}
-                      onClick={() => patch({ scene_id: a.id })}
+              {mode === "existing" &&
+                !choosingSetup &&
+                state.setup?.mode === "existing" && (
+                  <section
+                    className="flow-setup-card"
+                    aria-label="Selected setup"
+                  >
+                    {scene && (
+                      <OriginalPhoto src={scene.url} alt={scene.name} />
+                    )}
+                    <div>
+                      <p className="flow-eyebrow">
+                        EXISTING SETUP · SAVED COPY
+                      </p>
+                      <h3>{state.setup.name}</h3>
+                      <p>
+                        <b>RV for this shoot:</b>{" "}
+                        {rv?.name || "Choose your RV in step 1"}
+                      </p>
+                      <dl>
+                        <dt>Setting</dt>
+                        <dd>{scene?.name}</dd>
+                        <dt>Scene treatment</dt>
+                        <dd>
+                          {state.scene_mode === "place"
+                            ? "Keep this location and camp setup"
+                            : "Borrow the look, color and lifestyle"}
+                        </dd>
+                        <dt>People & activity</dt>
+                        <dd>
+                          {state.people ||
+                            "Follow the people and activity in the reference, using only those needed in each frame."}
+                        </dd>
+                        <dt>Props & styling</dt>
+                        <dd>
+                          {state.props ||
+                            "Follow the reference’s camp styling."}
+                        </dd>
+                        {!!state.prop_ids.length && (
+                          <>
+                            <dt>Object reference</dt>
+                            <dd>
+                              {
+                                p.assets.find((a) => a.id === state.prop_ids[0])
+                                  ?.name
+                              }
+                            </dd>
+                          </>
+                        )}
+                        <dt>Photographic direction</dt>
+                        <dd>
+                          {state.brief ||
+                            "Use the selected reference’s photographic character."}
+                        </dd>
+                      </dl>
+                      <Button
+                        variant="outline"
+                        onClick={() => replaceSetup(customizeSetup(state))}
+                      >
+                        Customize this setup
+                      </Button>
+                      <p className="flow-help">
+                        Customization creates an editable copy. The original
+                        setup stays unchanged.
+                      </p>
+                    </div>
+                  </section>
+                )}
+              {mode === "custom" && !choosingSetup && (
+                <>
+                  <div className="flow-note">
+                    <strong>Custom setup</strong>
+                    <p>
+                      {state.setup?.mode === "custom" &&
+                      state.setup.derived_from
+                        ? `Based on ${state.setup.derived_from}. `
+                        : ""}
+                      Choose one setting, then define the people, props and
+                      direction. Choosing a different setting clears the
+                      previous direction and resets shot instructions.
+                    </p>
+                  </div>
+                  <div className="flow-toolbar">
+                    <Button
+                      variant={
+                        sceneSource === "library" ? "default" : "outline"
+                      }
+                      onClick={() => setSceneSource("library")}
+                    >
+                      Choose a setting
+                    </Button>
+                    <Button
+                      variant={
+                        sceneSource === "campaigns" ? "default" : "outline"
+                      }
+                      onClick={() => setSceneSource("campaigns")}
+                    >
+                      Photo from a previous campaign
+                    </Button>
+                    <Button
+                      variant="outline"
+                      onClick={() => setDiscovery(!discovery)}
+                    >
+                      Find a real location
+                    </Button>
+                    <label className="flow-upload">
+                      Upload setting
+                      <input
+                        aria-label="Upload setting"
+                        type="file"
+                        accept="image/jpeg,image/png,image/webp"
+                        disabled={busy}
+                        onChange={(e) =>
+                          void upload(e.target.files?.[0], "landscape")
+                        }
+                      />
+                    </label>
+                  </div>
+                  {discovery && (
+                    <LandscapeDiscovery
+                      onBack={() => setDiscovery(false)}
+                      canUse
+                      onImported={async (a, use) => {
+                        await p.onRefresh();
+                        if (use) {
+                          chooseScene(a.id);
+                          setDiscovery(false);
+                        }
+                      }}
                     />
-                  ))}
-              </div>
-              <div className="flow-direction">
-                <label className="flow-field">
-                  How to use the scene
-                  <select
-                    aria-label="How to use the scene"
-                    value={state.scene_mode}
-                    onChange={(e) =>
-                      patch({ scene_mode: e.target.value as "look" | "place" })
-                    }
-                  >
-                    <option value="look">
-                      Borrow the look, color and lifestyle
-                    </option>
-                    <option value="place">
-                      Keep this location and camp setup
-                    </option>
-                  </select>
-                </label>
-                <label className="flow-field">
-                  People & activity
-                  <Textarea
-                    aria-label="People & activity"
-                    value={state.people}
-                    onChange={(e) => patch({ people: e.target.value })}
-                    placeholder="A couple sharing coffee, one person reading, a family returning from a walk… Use “No people” for a product-only shoot."
+                  )}
+                  {sceneSource === "campaigns" && (
+                    <p className="flow-help">
+                      This uses one photo as a visual reference. To inherit the
+                      complete scene direction, choose “Use an existing setup”
+                      above.
+                    </p>
+                  )}
+                  <Input
+                    aria-label="Search settings"
+                    placeholder="Search Jayco shoots, landscapes, locations…"
+                    value={query}
+                    onChange={(e) => setQuery(e.target.value)}
                   />
-                </label>
-                <label className="flow-field">
-                  Props & styling
-                  <Textarea
-                    aria-label="Props & styling"
-                    value={state.props}
-                    onChange={(e) => patch({ props: e.target.value })}
-                    placeholder="Two camp chairs, a woven blanket, coffee mugs. No bikes or pets."
-                  />
-                </label>
-                <label className="flow-field">
-                  Object reference (optional)
-                  <select
-                    aria-label="Object reference (optional)"
-                    value={state.prop_ids[0] || ""}
-                    onChange={(e) =>
-                      patch({
-                        prop_ids: e.target.value ? [e.target.value] : [],
-                      })
-                    }
-                  >
-                    <option value="">No object reference</option>
+                  <div className="flow-assets">
                     {p.assets
-                      .filter((a) => a.kind === "prop")
+                      .filter((a) =>
+                        sceneSource === "library"
+                          ? a.kind === "landscape"
+                          : !!a.project_id &&
+                            [
+                              "composition",
+                              "lifestyle",
+                              "campaign",
+                              "variation",
+                            ].includes(a.kind),
+                      )
+                      .filter(named)
                       .map((a) => (
-                        <option key={a.id} value={a.id}>
-                          {a.name}
-                        </option>
+                        <AssetChoice
+                          key={a.id}
+                          asset={a}
+                          selected={a.id === state.scene_id}
+                          onClick={() => chooseScene(a.id)}
+                        />
                       ))}
-                  </select>
-                </label>
-                <label className="flow-upload">
-                  Upload object reference
-                  <input
-                    aria-label="Upload object reference"
-                    type="file"
-                    accept="image/jpeg,image/png,image/webp"
-                    disabled={busy}
-                    onChange={(e) => void upload(e.target.files?.[0], "prop")}
-                  />
-                </label>
-                <label className="flow-field flow-full">
-                  Campaign direction
-                  <Textarea
-                    rows={5}
-                    aria-label="Campaign direction"
-                    value={state.brief}
-                    onChange={(e) => patch({ brief: e.target.value })}
-                    placeholder="Describe the audience, mood, season, lighting, color treatment and story. Your selected RV remains the product identity."
-                  />
-                </label>
-              </div>
+                  </div>
+                  <div className="flow-direction">
+                    <label className="flow-field">
+                      How to use the scene
+                      <select
+                        aria-label="How to use the scene"
+                        value={state.scene_mode}
+                        onChange={(e) =>
+                          patch({
+                            scene_mode: e.target.value as "look" | "place",
+                          })
+                        }
+                      >
+                        <option value="look">
+                          Borrow the look, color and lifestyle
+                        </option>
+                        <option value="place">
+                          Keep this location and camp setup
+                        </option>
+                      </select>
+                    </label>
+                    <label className="flow-field">
+                      People & activity
+                      <Textarea
+                        aria-label="People & activity"
+                        value={state.people}
+                        onChange={(e) => patch({ people: e.target.value })}
+                        placeholder="A couple sharing coffee, one person reading, a family returning from a walk… Use “No people” for a product-only shoot."
+                      />
+                    </label>
+                    <label className="flow-field">
+                      Props & styling
+                      <Textarea
+                        aria-label="Props & styling"
+                        value={state.props}
+                        onChange={(e) => patch({ props: e.target.value })}
+                        placeholder="Two camp chairs, a woven blanket, coffee mugs. No bikes or pets."
+                      />
+                    </label>
+                    <label className="flow-field">
+                      Object reference (optional)
+                      <select
+                        aria-label="Object reference (optional)"
+                        value={state.prop_ids[0] || ""}
+                        onChange={(e) =>
+                          patch({
+                            prop_ids: e.target.value ? [e.target.value] : [],
+                          })
+                        }
+                      >
+                        <option value="">No object reference</option>
+                        {p.assets
+                          .filter((a) => a.kind === "prop")
+                          .map((a) => (
+                            <option key={a.id} value={a.id}>
+                              {a.name}
+                            </option>
+                          ))}
+                      </select>
+                    </label>
+                    <label className="flow-upload">
+                      Upload object reference
+                      <input
+                        aria-label="Upload object reference"
+                        type="file"
+                        accept="image/jpeg,image/png,image/webp"
+                        disabled={busy}
+                        onChange={(e) =>
+                          void upload(e.target.files?.[0], "prop")
+                        }
+                      />
+                    </label>
+                    <label className="flow-field flow-full">
+                      Campaign direction
+                      <Textarea
+                        rows={5}
+                        aria-label="Campaign direction"
+                        value={state.brief}
+                        onChange={(e) => patch({ brief: e.target.value })}
+                        placeholder="Describe the audience, mood, season, lighting, color treatment and story. Your selected RV remains the product identity."
+                      />
+                    </label>
+                  </div>
+                </>
+              )}
             </>
           )}
           {state.section === "plan" && (
@@ -750,26 +979,23 @@ function FlowEditor({ initial, ...p }: Props & { initial: FlowDocument }) {
               </div>
               <div className="flow-toolbar">
                 <label className="flow-field">
-                  Add a shoot package
+                  Choose deliverables
                   <select
-                    aria-label="Add a shoot package"
+                    aria-label="Choose deliverables"
                     value=""
                     onChange={(e) => {
                       const pack = shootPackages[Number(e.target.value)];
+                      setSelected([]);
                       patch({
-                        shots: [
-                          ...state.shots,
-                          ...pack.roles
-                            .filter(
-                              (id) => !state.shots.some((s) => s.id === id),
-                            )
-                            .slice(0, 30 - state.shots.length)
-                            .map(plannedShot),
-                        ],
+                        shots: pack.roles.map(
+                          (id) =>
+                            state.shots.find((s) => s.id === id) ||
+                            plannedShot(id),
+                        ),
                       });
                     }}
                   >
-                    <option value="">Choose a package…</option>
+                    <option value="">Choose a campaign size…</option>
                     {shootPackages.map((pack, i) => (
                       <option key={pack.name} value={i}>
                         {pack.name}
@@ -861,12 +1087,31 @@ function FlowEditor({ initial, ...p }: Props & { initial: FlowDocument }) {
                             <Textarea
                               rows={4}
                               aria-label="Shot direction"
+                              readOnly={mode === "existing"}
                               value={s.direction}
                               onChange={(e) =>
                                 shotUpdate(s.id, { direction: e.target.value })
                               }
                             />
                           </label>
+                          {mode === "existing" && (
+                            <p className="flow-full flow-help">
+                              The setup supplies this shot’s direction.{" "}
+                              <button
+                                type="button"
+                                className="underline"
+                                onClick={() =>
+                                  replaceSetup({
+                                    ...customizeSetup(state),
+                                    section: "scene",
+                                  })
+                                }
+                              >
+                                Customize this setup
+                              </button>{" "}
+                              to change its activities or styling.
+                            </p>
+                          )}
                         </div>
                         <div className="flow-toolbar">
                           <Button
@@ -936,6 +1181,7 @@ function FlowEditor({ initial, ...p }: Props & { initial: FlowDocument }) {
                   disabled={state.shots.length >= 30}
                   onClick={() =>
                     patch({
+                      ...customizeSetup(state),
                       shots: [
                         ...state.shots,
                         {
@@ -950,15 +1196,31 @@ function FlowEditor({ initial, ...p }: Props & { initial: FlowDocument }) {
                     })
                   }
                 >
-                  Add custom shot
+                  {mode === "existing"
+                    ? "Customize setup & add a shot"
+                    : "Add custom shot"}
                 </Button>
               </div>
               <div className="flow-generation">
                 <div>
-                  <strong>{selected.length} photos this pass</strong>
+                  <strong>
+                    {completed.length} of {state.shots.length} campaign photos
+                    ready · {selected.length} selected next
+                  </strong>
                   <p>
-                    Maximum two paid images per pass. Every selected shot is a
-                    separate composition at its requested size.
+                    <b>{rv?.name || "Choose an RV"}</b> ·{" "}
+                    {state.setup?.mode === "existing"
+                      ? state.setup.name
+                      : "Custom setup"}{" "}
+                    · {scene?.name || "Choose a setting"}
+                  </p>
+                  {setupProblem(state) && (
+                    <p role="alert">{setupProblem(state)}</p>
+                  )}
+                  <p>
+                    {state.shots.length} photos in this campaign. Generate up to
+                    two at a time, then continue until every deliverable is
+                    ready. Each selection is a paid image request.
                   </p>
                   {!rv || !scene ? (
                     <p>Choose an RV and setting before generating.</p>
@@ -971,6 +1233,7 @@ function FlowEditor({ initial, ...p }: Props & { initial: FlowDocument }) {
                     running ||
                     !rv ||
                     !scene ||
+                    !!setupProblem(state) ||
                     !selected.length
                   }
                   onClick={() => void generate()}
@@ -1092,17 +1355,26 @@ function FlowEditor({ initial, ...p }: Props & { initial: FlowDocument }) {
                                         const prior = flowSchema.parse(
                                           JSON.parse(batch.workflow_json),
                                         );
-                                        patch({
-                                          ...prior,
+                                        replaceSetup({
+                                          ...applyExistingSetup(
+                                            state,
+                                            `${p.project.name} — saved take`,
+                                            `Batch ${batch.id}`,
+                                            sceneSetup(prior),
+                                          ),
                                           section: "scene",
-                                          shots: state.shots,
                                         });
                                       } else {
                                         const refs = JSON.parse(
                                           batch.inputs_json,
                                         ) as string[];
                                         patch({
-                                          rv_id: refs[0] ?? null,
+                                          setup: {
+                                            mode: "custom",
+                                            name: "Custom setup",
+                                            derived_from:
+                                              "Earlier take — review imported direction",
+                                          },
                                           scene_id: refs[1] ?? null,
                                           identity_ids: [],
                                           prop_ids: [],
@@ -1241,7 +1513,8 @@ function FlowEditor({ initial, ...p }: Props & { initial: FlowDocument }) {
                 disabled={
                   busy ||
                   (state.section === "rv" && !rv) ||
-                  (state.section === "scene" && !scene)
+                  (state.section === "scene" &&
+                    (!scene || !!setupProblem(state) || choosingSetup))
                 }
                 onClick={() =>
                   patch({

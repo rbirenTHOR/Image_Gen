@@ -22,7 +22,6 @@ import {
   Send,
   Copy,
 } from "lucide-react";
-import { photoshootShots } from "@/lib/photoshoot";
 import { OriginalPhoto } from "@/components/original-photo";
 import { PhotoSource } from "@/components/photo-source";
 import { Button } from "@/components/ui/button";
@@ -47,11 +46,6 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "sonner";
 import { readCampaignDraft, writeCampaignDraft } from "@/lib/campaign-draft";
-import {
-  campaignPresets,
-  getCampaignPreset,
-  resolveCampaignPreset,
-} from "@/lib/campaign-presets";
 import {
   activeStatus,
   generationSizeLabel,
@@ -187,10 +181,7 @@ export function CampaignHome({
 }) {
   const [search, setSearch] = useState("");
   const [newOpen, setNewOpen] = useState(false);
-  const [presetId, setPresetId] = useState("blank");
   const [creating, setCreating] = useState(false);
-  const preset = getCampaignPreset(presetId)!;
-  const resolved = resolveCampaignPreset(preset, assets);
   return (
     <div className="campaign-mode">
       <StudioHeader onNav={onNav} />
@@ -284,46 +275,18 @@ export function CampaignHome({
       <Dialog open={newOpen} onOpenChange={setNewOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Choose a campaign setup</DialogTitle>
+            <DialogTitle>Start a campaign</DialogTitle>
             <DialogDescription>
-              Start from an approved product and lifestyle recipe, or build one yourself.
+              Choose your RV, use an existing shoot setup or create your own, then plan the photos you need.
             </DialogDescription>
           </DialogHeader>
-          <Select value={presetId} onValueChange={setPresetId}>
-            <SelectTrigger aria-label="Campaign setup">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {campaignPresets.map((item) => (
-                <SelectItem key={item.id} value={item.id}>
-                  {item.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <div className="campaign-preset-summary">
-            <strong>{preset.description}</strong>
-            <span>{preset.rvLabel}</span>
-            <span>{preset.styleLabel}</span>
-            {preset.id === "blank" ? (
-              <small>Choose an RV, scene and shoot plan in your campaign workspace.</small>
-            ) : (
-              <>
-              <small>{preset.mode === "lifestyle" ? `${photoshootShots.length} shot roles · 2 per pass · web, editorial, social & Stories` : `${preset.count} takes · ${generationSizeLabel(preset.aspect)}`}</small>
-              <small>
-                {resolved.rv && resolved.landscape
-                  ? "Ready · product and Dropbox style reference found"
-                  : `Setup needed · ${!resolved.rv ? "Eagle RV reference" : ""}${!resolved.rv && !resolved.landscape ? " and " : ""}${!resolved.landscape ? preset.styleLabel : ""} missing`}
-              </small>
-              </>
-            )}
-          </div>
+          <p>RV → Shoot setup → Deliverables → Results</p>
           <Button
             disabled={creating}
             onClick={async () => {
               setCreating(true);
               try {
-                await onNew(presetId);
+                await onNew("blank");
                 setNewOpen(false);
               } finally {
                 setCreating(false);

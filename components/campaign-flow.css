@@ -460,3 +460,83 @@
 .flow-app fieldset:disabled {
   opacity: 0.75;
 }
+
+.flow-setup-paths {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin: 24px 0;
+}
+.flow-setup-picker,
+.flow-setup-card {
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 24px;
+  margin: 20px 0;
+  background: var(--card);
+}
+.flow-setup-picker h3,
+.flow-setup-card h3 {
+  font-size: 23px;
+  font-weight: 600;
+  margin-bottom: 12px;
+}
+.flow-setup-picker p,
+.flow-help {
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--muted-foreground);
+  margin: 12px 0;
+}
+.flow-setup-picker .flow-assets {
+  max-height: none;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+.flow-setup-picker .flow-asset strong {
+  display: block;
+  padding: 12px 14px 0;
+}
+.flow-setup-card {
+  display: grid;
+  grid-template-columns: minmax(220px, 0.8fr) minmax(0, 1.2fr);
+  gap: 28px;
+}
+.flow-setup-card img {
+  width: 100%;
+  height: auto;
+  border-radius: 9px;
+}
+.flow-setup-card dl {
+  margin: 20px 0;
+  font-size: 14px;
+  line-height: 1.65;
+}
+.flow-setup-card dt {
+  font-weight: 600;
+  margin-top: 14px;
+}
+.flow-setup-card dd {
+  color: var(--muted-foreground);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.flow-field textarea[readonly] {
+  background: var(--muted);
+  color: var(--muted-foreground);
+}
+@media (max-width: 700px) {
+  .flow-setup-card,
+  .flow-setup-picker .flow-assets {
+    grid-template-columns: 1fr;
+  }
+  .flow-setup-picker,
+  .flow-setup-card {
+    padding: 16px;
+  }
+  .flow-setup-paths > button {
+    width: 100%;
+    white-space: normal;
+    height: auto;
+    min-height: 44px;
+  }
+}
