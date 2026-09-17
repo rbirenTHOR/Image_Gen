@@ -192,7 +192,7 @@ export interface Batch {
   jobs: Job[];
 }
 export const activeStatus = (s: string) =>
-  ["submitting", "queued", "generating", "saving"].includes(s);
+  ["waiting", "submitting", "queued", "generating", "saving"].includes(s);
 export const generationCountSchema = z.number().int().min(1).max(4).default(2);
 export const requestSchema = z.object({
   count: generationCountSchema,

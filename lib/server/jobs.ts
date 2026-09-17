@@ -1,3 +1,4 @@
+import { z } from "zod";
 import { providerFetch } from "./provider-fetch";
 import { all, one, run, runtime, ApiError } from "./runtime";
 import { getAsset, getProject } from "./library";
@@ -115,7 +116,11 @@ async function submitJob(job: StoredJob, b: StoredBatch, images: string[]) {
   }
 }
 export async function startBatch(raw: unknown, owner: string, flow?: {shots: import("@/lib/photoshoot").PhotoshootShot[]; inputs:string[]; snapshot:string; revision:number}) {
-  const data = requestSchema.parse(raw);
+  const data = (flow ? requestSchema.extend({ count: z.number().int().min(1).max(30) }) : requestSchema).parse(raw);
+  if (flow && (flow.shots.length !== data.count || new Set(flow.shots.map(s => s.id)).size !== data.count))
+    throw new ApiError(400, "Every selected deliverable must have one unique shot.");
+  // A campaign selection is one durable batch; only two jobs occupy provider capacity.
+  const initialCount = flow ? Math.min(2, data.count) : data.count;
   let shootShots = flow?.shots;
   if (data.shot_ids) {
     if (data.stage !== "compose" || data.shot_ids.length !== data.count)
@@ -183,7 +188,7 @@ export async function startBatch(raw: unknown, owner: string, flow?: {shots: imp
     "SELECT COUNT(*) n FROM jobs j JOIN batches b ON b.id=j.batch_id WHERE b.owner_id=? AND j.status IN ('submitting','queued','generating','saving')",
     owner,
   );
-  if ((count?.n ?? 0) + data.count > 8)
+  if ((count?.n ?? 0) + initialCount > 8)
     throw new ApiError(
       429,
       "The studio supports eight images at a time. Choose fewer images or let the current images finish.",
@@ -224,7 +229,7 @@ export async function startBatch(raw: unknown, owner: string, flow?: {shots: imp
         flow?.snapshot ?? "",
         flow?.revision ?? 0,
         owner,
-        8 - data.count,
+        8 - initialCount,
       ),
   ];
   const ids = Array.from({length:data.count}, () => crypto.randomUUID());
@@ -234,7 +239,7 @@ export async function startBatch(raw: unknown, owner: string, flow?: {shots: imp
         .DB.prepare(
           "INSERT INTO jobs(id,batch_id,slot,status,created_at,updated_at,shot_label,generation_prompt,shot_id,output_aspect) VALUES(?,?,?,?,?,?,?,?,?,?)",
         )
-        .bind(ids[slot], data.id, slot, "submitting", now, now,
+        .bind(ids[slot], data.id, slot, slot < initialCount ? "submitting" : "waiting", now, now,
           shootShots?.[slot].label ?? shots?.[slot].label ?? "",
           buildPrompt(data.stage, data.prompt, slot,
             shootShots ? photoshootPrompt(shootShots[slot], data.prompt, shots?.[slot].direction) : shots?.[slot].direction,
@@ -256,7 +261,7 @@ export async function startBatch(raw: unknown, owner: string, flow?: {shots: imp
       "SELECT COUNT(*) n FROM jobs j JOIN batches b ON b.id=j.batch_id WHERE b.owner_id=? AND j.status IN ('submitting','queued','generating','saving')",
       owner,
     );
-    if ((running?.n ?? 0) + data.count > 8)
+    if ((running?.n ?? 0) + initialCount > 8)
       throw new ApiError(
         429,
         "The studio supports eight images at a time. Choose fewer images or let the current images finish.",
@@ -268,7 +273,7 @@ export async function startBatch(raw: unknown, owner: string, flow?: {shots: imp
     "SELECT * FROM jobs WHERE batch_id=? ORDER BY slot",
     data.id,
   );
-  await Promise.allSettled(jobs.map((j) => submitJob(j, b!, images)));
+  await Promise.allSettled(jobs.filter(j => j.status === "submitting").map((j) => submitJob(j, b!, images)));
   return batchView(data.id, owner);
 }
 async function saveImage(
@@ -556,6 +561,25 @@ async function syncJob(job: StoredJob, b: StoredBatch) {
     await run("UPDATE jobs SET lease_until=0 WHERE id=?", job.id);
   }
 }
+// Claim each waiting job atomically. Concurrent tabs/polls cannot submit it twice.
+// The snapshot and per-shot prompts were persisted when the user clicked Generate.
+async function advanceCampaign(b: StoredBatch) {
+  if (!b.workflow_json) return;
+  const waiting = await all<StoredJob>("SELECT * FROM jobs WHERE batch_id=? AND status='waiting' ORDER BY slot LIMIT 2", b.id);
+  if (!waiting.length) return;
+  const active = await one<{ n: number }>("SELECT COUNT(*) n FROM jobs WHERE batch_id=? AND status IN ('submitting','queued','generating','saving')", b.id);
+  if ((active?.n ?? 0) >= 2) return;
+  const images = await modelImages(JSON.parse(b.inputs_json) as string[], b.owner_id);
+  const claimed: StoredJob[] = [];
+  for (const job of waiting) {
+    const next = await one<StoredJob>(
+      "UPDATE jobs SET status='submitting',created_at=?,updated_at=? WHERE id=? AND status='waiting' AND (SELECT COUNT(*) FROM jobs WHERE batch_id=? AND status IN ('submitting','queued','generating','saving')) < 2 AND (SELECT COUNT(*) FROM jobs j JOIN batches b ON b.id=j.batch_id WHERE b.owner_id=? AND j.status IN ('submitting','queued','generating','saving')) < 8 RETURNING *",
+      Date.now(), Date.now(), job.id, b.id, b.owner_id,
+    );
+    if (next) claimed.push(next);
+  }
+  await Promise.allSettled(claimed.map(job => submitJob(job, b, images)));
+}
 export async function reconcileBatch(id: string, owner: string) {
   const b = await one<StoredBatch>(
     "SELECT * FROM batches WHERE id=? AND owner_id=?",
@@ -565,6 +589,7 @@ export async function reconcileBatch(id: string, owner: string) {
   if (!b) throw new ApiError(404, "Batch not found.");
   const jobs = await all<StoredJob>("SELECT * FROM jobs WHERE batch_id=?", id);
   await Promise.allSettled(jobs.map((j) => syncJob(j, b)));
+  await advanceCampaign(b);
   return batchView(id, owner);
 }
 export async function retryJob(id: string, owner: string) {
@@ -590,14 +615,17 @@ export async function retryJob(id: string, owner: string) {
     owner,
   );
   const claimed = await one<StoredJob>(
-    "UPDATE jobs SET status=?,request_id=NULL,status_url=NULL,response_url=NULL,error=NULL,created_at=?,updated_at=?,attempts=attempts+1 WHERE id=? AND status=? RETURNING *",
+    "UPDATE jobs SET status=?,request_id=NULL,status_url=NULL,response_url=NULL,error=NULL,created_at=?,updated_at=?,attempts=attempts+1 WHERE id=? AND status=? AND (SELECT COUNT(*) FROM jobs WHERE batch_id=? AND status IN ('submitting','queued','generating','saving')) < ? AND (SELECT COUNT(*) FROM jobs j JOIN batches b ON b.id=j.batch_id WHERE b.owner_id=? AND j.status IN ('submitting','queued','generating','saving')) < 8 RETURNING *",
     "submitting",
     Date.now(),
     Date.now(),
     id,
     "failed",
+    b.id,
+    b.workflow_json ? 2 : 8,
+    owner,
   );
-  if (!claimed) throw new ApiError(409, "This image is already being retried.");
+  if (!claimed) throw new ApiError(409, "This image is already being retried or current images must finish before retrying.");
   await submitJob(claimed, b, images);
   return batchView(b.id, owner);
 }

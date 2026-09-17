@@ -974,8 +974,9 @@ function FlowEditor({ initial, ...p }: Props & { initial: FlowDocument }) {
             <>
               <div className="flow-note">
                 {state.shots.length} requested photos · {completed.length} ready
-                for the current brief · {selected.length} selected for this
-                pass. Changing the brief keeps older versions in Results.
+                for the current brief · {selected.length} selected. Select all,
+                then uncheck any photos you don’t need. Changing the brief keeps
+                older versions in Results.
               </div>
               <div className="flow-toolbar">
                 <label className="flow-field">
@@ -1005,16 +1006,9 @@ function FlowEditor({ initial, ...p }: Props & { initial: FlowDocument }) {
                 </label>
                 <Button
                   variant="outline"
-                  onClick={() =>
-                    setSelected(
-                      state.shots
-                        .filter((s) => !completed.some((c) => c.id === s.id))
-                        .slice(0, 2)
-                        .map((s) => s.id),
-                    )
-                  }
+                  onClick={() => setSelected(state.shots.map((s) => s.id))}
                 >
-                  Select next two
+                  Select all
                 </Button>
               </div>
               <div className="flow-shot-list">
@@ -1027,10 +1021,7 @@ function FlowEditor({ initial, ...p }: Props & { initial: FlowDocument }) {
                           <input
                             type="checkbox"
                             checked={selected.includes(s.id)}
-                            disabled={
-                              busy ||
-                              (!selected.includes(s.id) && selected.length >= 2)
-                            }
+                            disabled={busy}
                             onChange={(e) => {
                               setSelected((ids) =>
                                 e.target.checked
@@ -1218,10 +1209,17 @@ function FlowEditor({ initial, ...p }: Props & { initial: FlowDocument }) {
                     <p role="alert">{setupProblem(state)}</p>
                   )}
                   <p>
-                    {state.shots.length} photos in this campaign. Generate up to
-                    two at a time, then continue until every deliverable is
-                    ready. Each selection is a paid image request.
+                    Generate the selected photos in one run. Each checked shot
+                    creates one new paid image; unchecked shots are not
+                    generated.
                   </p>
+                  {!!selected.filter((id) => completed.some((s) => s.id === id))
+                    .length && (
+                    <p>
+                      Selected shots that already have photos will get new
+                      versions. Existing photos are kept.
+                    </p>
+                  )}
                   {!rv || !scene ? (
                     <p>Choose an RV and setting before generating.</p>
                   ) : null}
@@ -1256,7 +1254,6 @@ function FlowEditor({ initial, ...p }: Props & { initial: FlowDocument }) {
                     setSelected(
                       state.shots
                         .filter((s) => !completed.some((c) => c.id === s.id))
-                        .slice(0, 2)
                         .map((s) => s.id),
                     );
                   }}
@@ -1276,8 +1273,9 @@ function FlowEditor({ initial, ...p }: Props & { initial: FlowDocument }) {
               </div>
               {running && (
                 <p role="status">
-                  Your photos are being developed. You can return later;
-                  progress is saved.
+                  Your selected photos are being developed automatically.
+                  Progress is saved; any remaining photos resume when you
+                  return.
                 </p>
               )}
               <div className="flow-results">
@@ -1397,7 +1395,9 @@ function FlowEditor({ initial, ...p }: Props & { initial: FlowDocument }) {
                             </>
                           ) : (
                             <p>
-                              {job.status}
+                              {job.status === "waiting"
+                                ? "In line — starts automatically"
+                                : job.status}
                               {job.error ? ": " + job.error : ""}
                               {["failed", "save_failed"].includes(
                                 job.status,

@@ -108,7 +108,7 @@ test("Request validation blocks unsupported routing and invalid request identifi
   assert.ok(!requestSchema.safeParse({ ...valid, prompt: "x" }).success);
 });
 test("Only actionable job states continue polling", () => {
-  for (const s of ["queued", "submitting", "generating", "saving"])
+  for (const s of ["waiting", "queued", "submitting", "generating", "saving"])
     assert.equal(activeStatus(s), true);
   for (const s of ["ready", "failed", "unknown", "save_failed"])
     assert.equal(activeStatus(s), false);

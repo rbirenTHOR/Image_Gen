@@ -147,7 +147,7 @@ export async function generateFlow(pid: string, owner: string, raw: unknown) {
     .object({
       id: z.string().uuid(),
       revision: z.number().int().min(0),
-      shot_ids: z.array(z.string()).min(1).max(2),
+      shot_ids: z.array(z.string()).min(1).max(30),
     })
     .strict()
     .parse(raw);
@@ -193,7 +193,7 @@ export async function generateFlow(pid: string, owner: string, raw: unknown) {
     selected.some((s) => !s) ||
     new Set(data.shot_ids).size !== data.shot_ids.length
   )
-    throw new ApiError(400, "Select one or two shots from your plan.");
+    throw new ApiError(400, "Select valid, unique shots from your plan.");
   return startBatch(
     {
       id: data.id,

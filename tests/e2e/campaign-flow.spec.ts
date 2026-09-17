@@ -245,11 +245,9 @@ test("Campaign walkthrough saves direction and plan, generates two distinct form
   await expect(
     page.getByText("6 requested photos", { exact: false }),
   ).toBeVisible();
-  await page
-    .getByRole("button", { name: "Select next two", exact: true })
-    .click();
-  await expect(page.getByRole("checkbox", { checked: true })).toHaveCount(2);
-  await expect(page.getByRole("checkbox").nth(2)).toBeDisabled();
+  await page.getByRole("button", { name: "Select all", exact: true }).click();
+  await expect(page.getByRole("checkbox", { checked: true })).toHaveCount(6);
+  await expect(page.getByRole("checkbox").nth(2)).toBeEnabled();
   await expect(
     page.getByText("All changes saved", { exact: true }),
   ).toBeVisible();
@@ -257,9 +255,7 @@ test("Campaign walkthrough saves direction and plan, generates two distinct form
   await expect(
     page.getByText("6 requested photos", { exact: false }),
   ).toBeVisible();
-  await page
-    .getByRole("button", { name: "Select next two", exact: true })
-    .click();
+  await page.getByRole("button", { name: "Select all", exact: true }).click();
   await page.request.post("http://127.0.0.1:6199/__control", {
     data: {
       failPlan: 0,
@@ -270,6 +266,7 @@ test("Campaign walkthrough saves direction and plan, generates two distinct form
       delay: 10,
     },
   });
+  for (let i = 2; i < 6; i++) await page.getByRole("checkbox").nth(i).uncheck();
   await page
     .getByRole("button", { name: "Generate 2 selected photos", exact: true })
     .click();
@@ -351,9 +348,7 @@ test("A lost generation response survives reload and recovers the same paid requ
     delay: 10,
   });
   await page.goto("/?project=" + project.id + "&view=campaign");
-  await page
-    .getByRole("button", { name: "Select next two", exact: true })
-    .click();
+  await page.getByRole("button", { name: "Select all", exact: true }).click();
   await page.route(
     "**" + path + "/generate",
     async (route) => {
@@ -362,6 +357,7 @@ test("A lost generation response survives reload and recovers the same paid requ
     },
     { times: 1 },
   );
+  for (let i = 2; i < 6; i++) await page.getByRole("checkbox").nth(i).uncheck();
   await page
     .getByRole("button", { name: "Generate 2 selected photos", exact: true })
     .click();
@@ -501,4 +497,198 @@ test("Existing setup snapshot rejects contradictory fields and generation waits 
   doc.state.people = "Two adults reading";
   response = await request.put(path, { headers, data: doc });
   expect(response.ok(), await response.text()).toBe(true);
+});
+
+test("Selected campaign delivers all checked shots with bounded concurrency and replay safety", async ({
+  request,
+}) => {
+  const headers = { Cookie: "__sites_local_auth=1" };
+  const control = async (data = {}) =>
+    await (
+      await request.post("http://127.0.0.1:6199/__control", { data })
+    ).json();
+  const baseline = await control({
+    delay: 1,
+    failPlan: 0,
+    failSubmit: 0,
+    failSave: 0,
+    noGround: false,
+  });
+  const imageCount = (records: { kind: string }[]) =>
+    records.filter((r) => r.kind === "image").length;
+  await request.post("/api/studio/bootstrap", { headers, data: {} });
+  const p = await (
+    await request.post("/api/studio/projects", {
+      headers,
+      data: { name: "Full selection contract" },
+    })
+  ).json();
+  const path = "/api/studio/projects/" + p.id + "/workflow";
+  let doc = await (await request.get(path, { headers })).json();
+  const { photoshootShots } = await import("../../lib/photoshoot");
+  doc.state = {
+    ...doc.state,
+    rv_id: "sample-rv",
+    scene_id: "mountain-stillness",
+    setup: { mode: "custom", name: "Custom setup" },
+    brief: "Original mountain campaign",
+    shots: photoshootShots.map((s) => plannedShot(s.id)),
+  };
+  doc = await (await request.put(path, { headers, data: doc })).json();
+  // Select all eighteen, then uncheck two. Exactly sixteen jobs should exist.
+  const selected = doc.state.shots
+    .filter((_: unknown, i: number) => i !== 2 && i !== 5)
+    .map((s: { id: string }) => s.id);
+  const data = {
+    id: crypto.randomUUID(),
+    revision: doc.revision,
+    shot_ids: selected,
+  };
+  const created = await request.post(path + "/generate", { headers, data });
+  expect(created.ok(), await created.text()).toBe(true);
+  const batch = await created.json();
+  expect(batch.jobs.map((j: Job) => j.shot_id)).toEqual(selected);
+  expect(batch.jobs.filter((j: Job) => j.status === "waiting")).toHaveLength(
+    14,
+  );
+  expect(
+    imageCount((await control()).records) - imageCount(baseline.records),
+  ).toBe(2);
+  // A later edit must not change the already-authorized queued shots.
+  doc.state.brief = "Changed desert campaign";
+  expect((await request.put(path, { headers, data: doc })).ok()).toBe(true);
+  const replay = await request.post(path + "/generate", { headers, data });
+  expect(replay.ok()).toBe(true);
+  expect(
+    imageCount((await control()).records) - imageCount(baseline.records),
+  ).toBe(2);
+  let latest = batch;
+  for (
+    let n = 0;
+    n < 60 && !latest.jobs.every((j: Job) => j.status === "ready");
+    n++
+  ) {
+    // Concurrent polls simulate two tabs or a reload arriving during a poll.
+    const polls = await Promise.all(
+      [0, 1, 2].map(() =>
+        request.get("/api/studio/batches/" + batch.id, { headers }),
+      ),
+    );
+    for (const response of polls) {
+      expect(response.ok(), await response.text()).toBe(true);
+      const view = await response.json();
+      expect(
+        view.jobs.filter((j: Job) =>
+          ["submitting", "queued", "generating", "saving"].includes(j.status),
+        ).length,
+      ).toBeLessThanOrEqual(2);
+    }
+    latest = await (
+      await request.get("/api/studio/batches/" + batch.id, { headers })
+    ).json();
+    if (!latest.jobs.every((j: Job) => j.status === "ready"))
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+  }
+  expect(latest.jobs.every((j: Job) => j.status === "ready")).toBe(true);
+  expect(latest.jobs).toHaveLength(16);
+  expect(
+    imageCount((await control()).records) - imageCount(baseline.records),
+  ).toBe(16);
+  expect(JSON.parse(latest.workflow_json).brief).toBe(
+    "Original mountain campaign",
+  );
+  expect(
+    latest.jobs.every(
+      (j: Job) => !j.generation_prompt?.includes("Changed desert"),
+    ),
+  ).toBe(true);
+  expect(new Set(latest.jobs.map((j: Job) => j.request_id)).size).toBe(16);
+  await request.post(path + "/generate", { headers, data });
+  expect(
+    imageCount((await control()).records) - imageCount(baseline.records),
+  ).toBe(16);
+});
+
+test("A rejected image does not repeat or prevent the other selected deliverables", async ({
+  request,
+}) => {
+  const headers = { Cookie: "__sites_local_auth=1" };
+  const control = async (data = {}) =>
+    await (
+      await request.post("http://127.0.0.1:6199/__control", { data })
+    ).json();
+  const baseline = await control({
+    delay: 10000,
+    failSubmit: 1,
+    failSave: 0,
+    failPlan: 0,
+    noGround: false,
+  });
+  const p = await (
+    await request.post("/api/studio/projects", {
+      headers,
+      data: { name: "Partial provider rejection" },
+    })
+  ).json();
+  const path = "/api/studio/projects/" + p.id + "/workflow";
+  let doc = await (await request.get(path, { headers })).json();
+  doc.state = {
+    ...doc.state,
+    rv_id: "sample-rv",
+    scene_id: "mountain-stillness",
+    setup: { mode: "custom", name: "Custom setup" },
+  };
+  doc = await (await request.put(path, { headers, data: doc })).json();
+  const selected = doc.state.shots.slice(0, 5).map((s: { id: string }) => s.id);
+  const created = await request.post(path + "/generate", {
+    headers,
+    data: {
+      id: crypto.randomUUID(),
+      revision: doc.revision,
+      shot_ids: selected,
+    },
+  });
+  expect(created.ok(), await created.text()).toBe(true);
+  let batch = await created.json();
+  batch = await (
+    await request.get("/api/studio/batches/" + batch.id, { headers })
+  ).json();
+  const failedId = batch.jobs.find((j: Job) => j.status === "failed").id;
+  expect(
+    (
+      await request.post("/api/studio/jobs/" + failedId + "/retry", { headers })
+    ).status(),
+  ).toBe(409);
+  await control({ delay: 1 });
+  for (
+    let i = 0;
+    i < 30 &&
+    batch.jobs.some((j: Job) => !["ready", "failed"].includes(j.status));
+    i++
+  ) {
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+    batch = await (
+      await request.get("/api/studio/batches/" + batch.id, { headers })
+    ).json();
+  }
+  expect(batch.jobs.filter((j: Job) => j.status === "failed")).toHaveLength(1);
+  expect(batch.jobs.filter((j: Job) => j.status === "ready")).toHaveLength(4);
+  const after = await control();
+  expect(
+    after.records.filter((r: { kind: string }) => r.kind === "image").length -
+      baseline.records.filter((r: { kind: string }) => r.kind === "image")
+        .length,
+  ).toBe(5);
+  const retried = await request.post(
+    "/api/studio/jobs/" + failedId + "/retry",
+    { headers },
+  );
+  expect(retried.ok(), await retried.text()).toBe(true);
+  expect(
+    (await control()).records.filter(
+      (r: { kind: string }) => r.kind === "image",
+    ).length -
+      baseline.records.filter((r: { kind: string }) => r.kind === "image")
+        .length,
+  ).toBe(6);
 });
