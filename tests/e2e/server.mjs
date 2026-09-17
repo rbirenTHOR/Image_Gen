@@ -205,6 +205,7 @@ const provider = createServer(async (req, res) => {
       const requestInput = JSON.parse(body);
       records.push({
         kind: "chat",
+        maxOutputTokens: requestInput.max_output_tokens,
         plan: requestInput.text?.format?.name === "rv_composition_plan",
         instructions: requestInput.instructions,
         referenceLabels: requestInput.input?.flatMap(m => Array.isArray(m.content) ? m.content.filter(c => c.type === "input_text").map(c => c.text) : []) || [],

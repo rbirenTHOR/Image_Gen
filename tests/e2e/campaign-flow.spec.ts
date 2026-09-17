@@ -772,3 +772,29 @@ test("Cast reference remains separate from RV evidence and every shot shares one
   expect(JSON.parse((await replay.json()).workflow_json).cast_reference_id).toBe('alpine-shoreline');
   expect((await control()).records.filter((x:{kind:string})=>x.kind==='image').length - baseline.records.filter((x:{kind:string})=>x.kind==='image').length).toBe(3);
 });
+
+
+test("Incomplete six-shot assessment retries with more room and submits images only once", async ({request}) => {
+  const headers = {Cookie: "__sites_local_auth=1"};
+  const control = async (data = {}) => (await request.post("http://127.0.0.1:6199/__control", {data})).json();
+  await control({delay:1, incompletePlan:1, failPlan:0, failSubmit:0, invalidView:false, mismatchedView:false, noGround:false});
+  await request.post('/api/studio/bootstrap',{headers,data:{}});
+  const p = await (await request.post('/api/studio/projects',{headers,data:{name:'Fresh six-shot recovery'}})).json();
+  const path = `/api/studio/projects/${p.id}/workflow`;
+  let doc = await (await request.get(path,{headers})).json();
+  doc.state = {...doc.state,rv_id:'sample-rv',scene_id:'mountain-stillness',setup:{mode:'custom',name:'Fresh test'}};
+  doc = await (await request.put(path,{headers,data:doc})).json();
+  const baseline = await control();
+  const data = {id:crypto.randomUUID(),revision:doc.revision,shot_ids:doc.state.shots.map((s:{id:string})=>s.id)};
+  const response = await request.post(path+'/generate',{headers,data});
+  expect(response.ok(),await response.text()).toBe(true);
+  expect((await response.json()).jobs).toHaveLength(6);
+  const records = (await control()).records.slice(baseline.records.length);
+  const plans = records.filter((r:{plan?:boolean})=>r.plan);
+  expect(plans).toHaveLength(2);
+  expect(plans[1].maxOutputTokens).toBeGreaterThan(plans[0].maxOutputTokens);
+  expect(records.filter((r:{kind:string})=>r.kind==='image')).toHaveLength(6);
+  expect(records.findIndex((r:{kind:string})=>r.kind==='image')).toBeGreaterThan(records.lastIndexOf(plans[1]));
+  expect((await request.post(path+'/generate',{headers,data})).ok()).toBe(true);
+  expect((await control()).records.slice(baseline.records.length).filter((r:{kind:string})=>r.kind==='image')).toHaveLength(6);
+});
