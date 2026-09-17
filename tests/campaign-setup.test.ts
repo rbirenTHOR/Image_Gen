@@ -216,4 +216,8 @@ test("Every default campaign role retains RV presence while lifestyle roles stay
     assert.doesNotMatch(prompt, /leave the RV outside|Omit the RV if/);
   }
   assert.match(rvPresenceDirection('partial'), /secondary context in every frame/);
+  const {rvViewGuard} = await import('../lib/rv-view-coverage.ts');
+  assert.match(rvViewGuard, /does not require logo visibility/);
+  assert.match(rvViewGuard, /Never rotate, mirror, foreshorten, widen or compress/);
+  assert.doesNotMatch(rvViewGuard, /omit the RV/);
 });

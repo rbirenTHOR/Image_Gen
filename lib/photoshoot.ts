@@ -23,7 +23,7 @@ export function defaultRvPresence(role: string): "full" | "partial" | "none" {
 }
 export function rvPresenceDirection(presence: "full" | "partial" | "none") {
   if (presence === "none") return "LIFESTYLE ONLY: no RV or motor vehicle anywhere in this frame, including backgrounds and reflections. Tell the campaign story through the people, activity, materials and setting. Remove motor vehicles visible in any reference; do not reconstruct or replace them. Bicycles explicitly requested for the activity are allowed. This visibility choice overrides any inherited instruction to show a vehicle.";
-  if (presence === "partial") return "PARTIAL RV CONTEXT: people and activity lead. Include a recognizable cropped portion of the selected RV as secondary context in every frame, never a whole vehicle or front cap. Keep the photographed perspective and landmark proportions. Reframe the people, activity and crop so a faithful portion remains visible; never omit, rotate or distort the RV to satisfy the shot. This visibility choice overrides inherited instructions to leave vehicles outside the frame.";
+  if (presence === "partial") return "PARTIAL RV CONTEXT: people and activity lead. Keep the selected RV visibly present as secondary context in every frame, naturally in the background or partially cropped. It does not need to anchor the composition or display a logo. Follow the assigned human activity and framing; do not turn this into a product hero. Keep the photographed perspective and landmark proportions. Reframe the people, activity and crop so a faithful portion remains visible; never omit, rotate or distort the RV to satisfy the shot. This visibility choice overrides inherited instructions to leave vehicles outside the frame.";
   return "FULL RV: one complete selected RV at natural environmental scale, preserving its photographed perspective and proportions. People and camp activity belong naturally around it. Do not invent another side or angle.";
 }
 
@@ -168,7 +168,7 @@ export const photoshootShots: PhotoshootShot[] = [
     usage: "Product page · dealer marketing · brochure",
     camera: "50mm · supported exterior angle · deep focus",
     summary: "A clear product frame grounded in the lived-in campsite.",
-    direction: "ENVIRONMENTAL PRODUCT PORTRAIT. Use a 50mm lens, f/8, with the source-supported exterior angle and camera elevation. Photograph the complete exact RV clearly with honest proportions, grounded wheels and readable source branding. Let camp chairs or a mug at the edge suggest people living here, but no person blocks the body, axles or entry. Preserve the lifestyle reference location and color; no sterile white backdrop or showroom lighting. Keep every door, slide-out and accessory in its source state. Avoid low heroic distortion and unsupported rear or aerial views.",
+    direction: "ENVIRONMENTAL PRODUCT PORTRAIT. Use a 50mm lens, f/8, with the source-supported exterior angle and camera elevation. Photograph the complete exact RV clearly with honest proportions and grounded wheels. Preserve branding only where naturally visible; do not rearrange the shot to display or sharpen a logo. Let camp chairs or a mug at the edge suggest people living here, but no person blocks the body, axles or entry. Preserve the lifestyle reference location and color; no sterile white backdrop or showroom lighting. Keep every door, slide-out and accessory in its source state. Avoid low heroic distortion and unsupported rear or aerial views.",
   },
   {
     id: "product-detail",
