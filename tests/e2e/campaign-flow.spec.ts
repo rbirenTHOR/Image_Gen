@@ -75,7 +75,7 @@ test("Saved campaign plan controls snapshots, two-image billing, draft retention
   expect(batch.jobs[0].generation_prompt).toContain("SCENE INTEGRATION");
   expect(batch.jobs[0].generation_prompt).toContain("compact contact shadows");
   expect(batch.jobs[0].generation_prompt).toContain("instead of copying reflections");
-  expect(batch.jobs[0].generation_prompt.split(doc.state.brief)).toHaveLength(2);
+  expect(batch.jobs[0].generation_prompt!.split(doc.state.brief)).toHaveLength(2);
   expect(records.filter((r: {plan?: boolean}) => r.plan).at(-1)!.instructions)
     .toContain("Replace the source photo's studio/dealer lighting");
 
