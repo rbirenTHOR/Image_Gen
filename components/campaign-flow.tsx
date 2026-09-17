@@ -766,6 +766,10 @@ function FlowEditor({ initial, ...p }: Props & { initial: FlowDocument }) {
                           {state.people ||
                             "Follow the people and activity in the reference, using only those needed in each frame."}
                         </dd>
+                        {state.cast_reference_id && <>
+                          <dt>People & wardrobe reference</dt>
+                          <dd>{p.assets.find(a => a.id === state.cast_reference_id)?.name || "Saved cast reference"}</dd>
+                        </>}
                         <dt>Props & styling</dt>
                         <dd>
                           {state.props ||
@@ -928,6 +932,21 @@ function FlowEditor({ initial, ...p }: Props & { initial: FlowDocument }) {
                         onChange={(e) => patch({ people: e.target.value })}
                         placeholder="A couple sharing coffee, one person reading, a family returning from a walk… Use “No people” for a product-only shoot."
                       />
+                    </label>
+                    <label className="flow-field">
+                      People & wardrobe reference (optional)
+                      <select aria-label="People & wardrobe reference" disabled={busy}
+                        value={state.cast_reference_id || ""}
+                        onChange={e => patch({cast_reference_id: e.target.value || null})}>
+                        <option value="">Plan consistent people from the shoot direction</option>
+                        {p.assets.filter(a => ["composition", "lifestyle", "campaign", "variation"].includes(a.kind) &&
+                          ![state.rv_id, state.scene_id, ...state.identity_ids, ...state.prop_ids].includes(a.id))
+                          .map(a => <option key={a.id} value={a.id}>{a.name} · {new Date(a.created_at).toLocaleString()}</option>)}
+                      </select>
+                      <span className="flow-help">Reuse people and clothing from a previous photo. The selected RV and setting still define the vehicle and location. Keep explicit wardrobe changes in People & activity.</span>
+                      {state.cast_reference_id && p.assets.find(a => a.id === state.cast_reference_id) &&
+                        <img src={p.assets.find(a => a.id === state.cast_reference_id)!.url}
+                          alt="Selected people and wardrobe reference" style={{maxWidth: 320, width: "100%", borderRadius: 8}} />}
                     </label>
                     <label className="flow-field">
                       Props & styling

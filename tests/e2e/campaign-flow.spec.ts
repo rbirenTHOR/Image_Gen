@@ -735,3 +735,40 @@ test("RV assessment inspects every reference, selects supported views and fails 
   expect(safe.jobs.every((j: Job) => j.generation_prompt?.includes("reference 1 only controls"))).toBe(true);
   await control({mismatchedView: false});
 });
+
+test("Cast reference remains separate from RV evidence and every shot shares one wardrobe plan", async ({request}) => {
+  const headers = {Cookie: "__sites_local_auth=1"};
+  const control = async (data = {}) => (await request.post("http://127.0.0.1:6199/__control", {data})).json();
+  await control({delay: 1, failPlan: 0, failSubmit: 0, failSave: 0, invalidView: false, mismatchedView: false, noGround: false});
+  await request.post('/api/studio/bootstrap', {headers, data:{}});
+  const p = await (await request.post('/api/studio/projects', {headers, data:{name:'Shared cast contract'}})).json();
+  const path = `/api/studio/projects/${p.id}/workflow`;
+  let doc = await (await request.get(path,{headers})).json();
+  doc.state = {...doc.state, rv_id:'sample-rv', scene_id:'mountain-stillness', cast_reference_id:'alpine-shoreline',
+    setup:{mode:'custom',name:'Cast test'}, shots:['establishing','portrait','detail'].map(plannedShot)};
+  doc = await (await request.put(path,{headers,data:doc})).json();
+  const baseline = await control();
+  const data = {id:crypto.randomUUID(),revision:doc.revision,shot_ids:doc.state.shots.map((s:{id:string})=>s.id)};
+  const r = await request.post(path+'/generate',{headers,data});
+  expect(r.ok(),await r.text()).toBe(true);
+  const batch = await r.json();
+  expect(JSON.parse(batch.workflow_json).cast_reference_id).toBe('alpine-shoreline');
+  for(const j of batch.jobs) {
+    expect(j.generation_prompt).toContain('Reference 3 is PEOPLE AND WARDROBE ONLY');
+    expect(j.generation_prompt).toContain('reference 1 only controls');
+    expect(j.generation_prompt).toContain('The same two adults wear neutral olive outdoor layers and gray trousers throughout.');
+  }
+  expect(batch.jobs[1].generation_prompt).toContain('under 20%');
+  expect(batch.jobs[2].generation_prompt).toContain('under 15%');
+  const records = (await control()).records.slice(baseline.records.length);
+  const plan = records.find((x:{plan?:boolean})=>x.plan);
+  expect(plan.visionDetails).toHaveLength(3);
+  expect(plan.referenceLabels.join('\n')).toContain('Reference 3: PEOPLE AND WARDROBE ONLY');
+  expect(records.filter((x:{kind:string})=>x.kind==='image').every((x:{input:{image_urls:string[]}})=>x.input.image_urls.length===3)).toBe(true);
+  expect((await request.put(path,{headers,data:{...doc,state:{...doc.state,cast_reference_id:'sample-rv'}}})).status()).toBe(400);
+  await request.put(path,{headers,data:{...doc,state:{...doc.state,cast_reference_id:null}}});
+  const replay = await request.post(path+'/generate',{headers,data});
+  expect(replay.ok()).toBe(true);
+  expect(JSON.parse((await replay.json()).workflow_json).cast_reference_id).toBe('alpine-shoreline');
+  expect((await control()).records.filter((x:{kind:string})=>x.kind==='image').length - baseline.records.filter((x:{kind:string})=>x.kind==='image').length).toBe(3);
+});

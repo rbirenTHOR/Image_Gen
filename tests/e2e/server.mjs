@@ -235,7 +235,7 @@ const provider = createServer(async (req, res) => {
       const identityRefs = hasViews ? [1, ...Array.from({length: input.text.format.schema.properties.views.maxItems - 1}, (_, i) => i + 3)] : [];
       const text = plan ? JSON.stringify({
         feasible: !controls.noGround, reason: controls.noGround ? "Choose a landscape with visible level ground." : "",
-        ...(hasViews ? {views: identityRefs.map(reference => ({reference, usable: reference === 1 || !controls.mismatchedView,
+        ...(hasViews ? {continuity: "The same two adults wear neutral olive outdoor layers and gray trousers throughout. Repeat the same blue camp chairs and compact camp table in soft mountain daylight.", views: identityRefs.map(reference => ({reference, usable: reference === 1 || !controls.mismatchedView,
           visible_view: reference === 1 ? "Curbside front three-quarter at source camera height." : "Curbside rear three-quarter at source camera height.",
           fixed_landmarks: "Door behind the front window; fixed wheelbase and body proportions.",
           limitations: "No unseen side, roof reconstruction or opening the closed door."}))} : {}),

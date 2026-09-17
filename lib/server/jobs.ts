@@ -210,6 +210,7 @@ export async function startBatch(raw: unknown, owner: string, flow?: {shots: imp
           !!shootShots,
           flow ? JSON.parse(flow.snapshot).identity_ids.length : 0,
           !!flow,
+          flow && JSON.parse(flow.snapshot).cast_reference_id ? images.length : 0,
         )
       : null;
   const endpoint = modelFor(data.stage),

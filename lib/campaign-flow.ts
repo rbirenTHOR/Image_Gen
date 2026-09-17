@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { photoshootShots, type PhotoshootShot } from "./photoshoot.ts";
+import { photoshootShots, shotFraming, type PhotoshootShot } from "./photoshoot.ts";
 import type { Batch } from "./domain";
 export const flowSections = ["rv", "scene", "plan", "results"] as const;
 export const aspectOptions = [
@@ -35,6 +35,7 @@ const sceneSetupSchema = z
     people: z.string().max(1000),
     props: z.string().max(1000),
     prop_ids: z.array(z.string().max(100)).max(1),
+    cast_reference_id: z.string().max(100).nullable().optional(),
   })
   .strict();
 const setupSchema = z.discriminatedUnion("mode", [
@@ -65,6 +66,7 @@ export const flowSchema = z
     scene_id: z.string().max(100).nullable(),
     identity_ids: z.array(z.string().max(100)).max(1),
     prop_ids: z.array(z.string().max(100)).max(1),
+    cast_reference_id: z.string().max(100).nullable().optional(),
     scene_mode: z.enum(["look", "place"]),
     people: z.string().max(1000),
     props: z.string().max(1000),
@@ -134,6 +136,9 @@ export function flowPrompt(s: CampaignFlowState) {
     s.identity_ids.length
       ? "Reference 3 is candidate additional identity evidence. Verify it matches the same RV before using its photographed angle; a detail crop or duplicate does not establish a new view."
       : "",
+    s.cast_reference_id
+      ? `Reference ${3 + s.identity_ids.length + s.prop_ids.length} is PEOPLE AND WARDROBE ONLY. Use the same adult faces, hair, clothing, hats and footwear in every frame where they appear. Ignore all RV geometry, location, lighting and framing in this cast photo; references 1 and 2 retain those roles. A cast reference does not require the whole cast in every shot. Explicit no-people instructions still apply.`
+      : "Plan one consistent cast and wardrobe for this shoot. Keep their faces, hair and clothing consistent across roles; do not choose a new outfit independently for every image.",
     "SOURCE AUTHORITY: RV photographs define the actual unit. Any model name, vehicle type, axle count, feature, color or configuration described in a reused brief or shot direction must be ignored when it conflicts with the RV photographs. Do not combine the previous campaign's unit with the selected RV.",
     s.scene_mode === "place"
       ? "LOCATION AUTHORITY: Reference 2 defines the selected place. Ignore conflicting location, terrain or time-of-day descriptions carried over from a previous setup; match this scene's actual light and environment."
@@ -158,6 +163,7 @@ export function resolvedShot(
     aspect: s.aspect,
     format: aspectOptions.find(([key]) => key === s.aspect)![1],
     usage: s.role === "custom" ? "Custom campaign deliverable" : base.usage,
+    framing: shotFraming(s.role),
     direction:
       s.direction +
       `\nCompose specifically for ${aspectOptions.find(([key]) => key === s.aspect)![1]}. This chosen image shape overrides any generic orientation mentioned in the role above.` +
@@ -172,6 +178,7 @@ export function flowSignature(s: CampaignFlowState) {
     scene: s.scene_id,
     identity: s.identity_ids,
     props: s.prop_ids,
+    cast: s.cast_reference_id || null,
     prompt: flowPrompt(s),
   });
 }
@@ -235,6 +242,7 @@ export function sceneSetup(state: SceneSetup): SceneSetup {
     people,
     props,
     prop_ids: [...prop_ids],
+    ...(state.cast_reference_id ? { cast_reference_id: state.cast_reference_id } : {}),
   };
 }
 export function setupMode(state: CampaignFlowState) {
@@ -274,6 +282,7 @@ export function applyExistingSetup(
   return {
     ...state,
     ...snapshot,
+    cast_reference_id: snapshot.cast_reference_id ?? null,
     setup: { mode: "existing", name, source, snapshot },
     shots: resetShotDirections(state.shots),
   };
@@ -290,6 +299,7 @@ export function startCustomSetup(
     people: "",
     props: "",
     prop_ids: [],
+    cast_reference_id: null,
     setup: { mode: "custom", name: "Custom setup" },
     shots: resetShotDirections(state.shots),
   };

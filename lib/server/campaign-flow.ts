@@ -89,6 +89,7 @@ async function validateRefs(s: CampaignFlowState, owner: string) {
     s.scene_id,
     ...s.identity_ids,
     ...s.prop_ids,
+    s.cast_reference_id,
   ].filter((x): x is string => !!x))
     await getAsset(id, owner);
   if (s.rv_id && (await getAsset(s.rv_id, owner)).kind !== "rv")
@@ -96,7 +97,7 @@ async function validateRefs(s: CampaignFlowState, owner: string) {
   for (const id of s.prop_ids)
     if ((await getAsset(id, owner)).kind !== "prop")
       throw new ApiError(400, "Select an object reference.");
-  const ids = [s.rv_id, s.scene_id, ...s.identity_ids, ...s.prop_ids].filter(
+  const ids = [s.rv_id, s.scene_id, ...s.identity_ids, ...s.prop_ids, s.cast_reference_id].filter(
     Boolean,
   );
   if (new Set(ids).size !== ids.length)
@@ -206,7 +207,7 @@ export async function generateFlow(pid: string, owner: string, raw: unknown) {
     owner,
     {
       shots: selected.map((s) => resolvedShot(s!, doc.state)),
-      inputs: [s.rv_id, s.scene_id, ...s.identity_ids, ...s.prop_ids],
+      inputs: [s.rv_id, s.scene_id, ...s.identity_ids, ...s.prop_ids, ...(s.cast_reference_id ? [s.cast_reference_id] : [])],
       snapshot: JSON.stringify(s),
       revision: doc.revision,
     },

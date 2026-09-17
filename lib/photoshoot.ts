@@ -12,6 +12,7 @@ export type PhotoshootShot = {
   direction: string;
   category: string;
   usage: string;
+  framing?: string;
 };
 
 /** Each frame is generated at its own native dimensions, never cropped from a hero. */
@@ -235,8 +236,18 @@ export function nextPhotoshootIds(batches: Batch[]) {
   return photoshootPasses.flatMap(p => p.shotIds).filter(id => !completed.has(id)).slice(0, 2);
 }
 
+export function shotFraming(role: string) {
+  if (["detail", "breakfast", "place-texture"].includes(role))
+    return "TIGHT DETAIL: hands, material and the specific activity occupy at least 80% of the composition. No full RV, front cap, complete entry, wheels or broad sidewall. At most a narrow, defocused siding fragment at the edge (under 15% of the frame); leave the RV outside the frame if necessary. Do not back away to prove RV identity. Keep only the props essential to this activity.";
+  if (["portrait", "social-feed", "quiet-reading", "fireside", "over-shoulder", "shared-table"].includes(role))
+    return "INTIMATE HUMAN FRAME: upper-body people and their interaction dominate at least 75% of the image. Crop at waist or chest rather than fitting full bodies and a whole camp chair. RV context is only a small defocused fragment of a supported wall at one edge (under 20% of the frame); no full front cap, complete doorway, wheel or vehicle silhouette. Omit the RV if a faithful fragment cannot fit. No foreground firepit or bicycle unless central to the assigned activity. Prefer absorbed gestures over matching broad smiles.";
+  if (role === "product-detail")
+    return "PRODUCT DETAIL: crop to one clearly observed feature with adjacent panel context. If the source lacks detail, widen only enough to show a supported panel. Never fabricate microtext or unseen fittings.";
+  return "ENVIRONMENTAL FRAME: retain the requested activity, subject hierarchy and supported source view. Whole-RV coverage belongs to environmental/product roles, not every photograph. Keep visible ground contact and natural scale.";
+}
+
 export const photoshootContinuity = 'Treat this as one location shoot. Use image 1 for the exact RV identity and image 2 for place, source palette, light direction, cast styling, wardrobe and props. Preserve the identity and clothing of each reference person who appears, plus weather and location across frames. The assigned shot decides who is in frame: the complete cast and pets do not need to appear in every image. Keep unrequested cast outside the frame for solo portraits, details and product coverage. Prefer activities and animals supported by the reference; do not add pets or children unless requested or visible there. Vary framing, human activity, subject scale and depth of field within the assessed RV view limits. Crop the vehicle intentionally for intimate shots while preserving all visible geometry and graphics; do not invent unsupported interiors or unseen sides. Treat the entry door, windows, slide-outs, badges and compartments as fixed architectural landmarks: never relocate, resize or reorder them to fit the frame. Keep the door closed if the RV identity photo shows it closed. Crop different landmarks out instead of compressing the vehicle or moving its entry toward the front cap. No staged smiles or stock-photo posing. Each output is one photograph.';
 
 export function photoshootPrompt(shot: PhotoshootShot, brief: string, assessment?: string) {
-  return `${photoshootContinuity}\n\n${brief ? `CAMPAIGN DIRECTION\n${brief}\n\n` : ''}ASSIGNED SHOT — ${shot.label}\nIntended use: ${shot.usage}.\nNative output: ${shot.format}.\n${shot.direction}\nThis assigned shot controls framing, subject hierarchy and action only within the assessed RV view limits. The source evidence overrides unsupported camera or angle requests. Render only this shot, not other shots mentioned in the campaign direction. Match the source palette and lighting; use natural skin, credible anatomy and physical ground contact. No collage or split screen.\n\n${assessment ? `FINAL RV VIEW CONTRACT\n${assessment}` : rvViewGuard}`;
+  return `${photoshootContinuity}\n\n${brief ? `CAMPAIGN DIRECTION\n${brief}\n\n` : ''}ASSIGNED SHOT — ${shot.label}\nIntended use: ${shot.usage}.\nNative output: ${shot.format}.\n${shot.direction}\nThis assigned shot controls framing, subject hierarchy and action only within the assessed RV view limits. The source evidence overrides unsupported camera or angle requests. Render only this shot, not other shots mentioned in the campaign direction. Match the source palette and lighting; use natural skin, credible anatomy and physical ground contact. No collage or split screen.\n\n${assessment ? `FINAL RV VIEW CONTRACT\n${assessment}` : rvViewGuard}\n\nFINAL FRAMING REQUIREMENT\n${shot.framing || shotFraming(shot.id)}`;
 }

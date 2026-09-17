@@ -153,3 +153,29 @@ test("RV evidence cannot unlock a scene image, a missing view or an unverified u
   assert.match(assessedViewDirections({views: [view(1), view(3)], shots: [shot(3)]}, 1, 1)[0], /reference 3 only/);
   assert.throws(() => assessedViewDirections({views: [view(1), view(1)], shots: [shot(1)]}, 1, 1));
 });
+
+test("Cast reference moves with a complete setup, clears on reset and stays distinct from RV evidence", () => {
+  const old = {...state(), cast_reference_id: "people-shot"};
+  const selected = applyExistingSetup(old, "Mountain", "preset", mountain);
+  assert.equal(selected.cast_reference_id, null);
+  const withCast = applyExistingSetup(old, "Saved cast", "campaign", {...mountain, cast_reference_id: "new-cast"});
+  assert.equal(withCast.cast_reference_id, "new-cast");
+  assert.equal(setupProblem({...withCast, cast_reference_id: "different-cast"})?.includes("conflicting"), true);
+  assert.equal(startCustomSetup(old, "new-scene").cast_reference_id, null);
+  assert.equal(customizeSetup(withCast).cast_reference_id, "new-cast");
+  assert.match(flowPrompt(old), /Reference 5 is PEOPLE AND WARDROBE ONLY/);
+  assert.match(flowPrompt(old), /Ignore all RV geometry/);
+  const batch = {workflow_json: JSON.stringify(old)} as Parameters<typeof matchingShot>[0];
+  assert.equal(matchingShot(batch, old.shots[0], {...old, cast_reference_id: "other"}), false);
+});
+
+test("Shot framing survives custom labels and role directions without sacrificing RV source limits", async () => {
+  const {resolvedShot} = await import('../lib/campaign-flow.ts');
+  const {photoshootPrompt} = await import('../lib/photoshoot.ts');
+  const shot = resolvedShot({...plannedShot('detail'), id: 'custom-id', label: 'Morning map', direction: 'Fold a map at camp.'});
+  const prompt = photoshootPrompt(shot, 'One adult at camp.');
+  assert.match(prompt, /TIGHT DETAIL/);
+  assert.match(prompt, /under 15%/);
+  assert.match(prompt, /Never rotate, mirror/);
+  assert.match(photoshootPrompt(resolvedShot(plannedShot('portrait')), ''), /upper-body people/);
+});
