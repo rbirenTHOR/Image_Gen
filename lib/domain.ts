@@ -15,6 +15,14 @@ export const generationSizes: Record<
   portrait_4_5: { width: 2560, height: 3200 },
   portrait_9_16: { width: 2160, height: 3840 },
 };
+export function sourceImageAspect(width: number | null, height: number | null) {
+  if (!width || !height || width < 0 || height < 0) return "landscape_4_3";
+  const ratio = width / height;
+  return Object.entries(generationSizes).reduce((best, [key, size]) =>
+    Math.abs(Math.log(ratio / (size.width / size.height))) <
+    Math.abs(Math.log(ratio / (generationSizes[best].width / generationSizes[best].height))) ? key : best,
+  "landscape_4_3");
+}
 export function generationSizeLabel(aspect: string) {
   const size = generationSizes[aspect];
   return size

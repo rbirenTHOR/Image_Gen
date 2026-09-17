@@ -580,7 +580,7 @@ export default function CampaignWorkspace({
         {
           prompt: promptEdits[t.id] ?? t.prompt,
           aspect: aspects[t.id] ?? t.aspect,
-          count: counts[t.id] ?? 2,
+          count: counts[t.id] ?? (parseRefs(t).length ? 1 : 2),
         },
       );
       onBatch(b);
@@ -685,7 +685,7 @@ export default function CampaignWorkspace({
         {(
           b?.jobs ??
           (generating === t.id
-            ? Array.from({length:counts[t.id] ?? 2}, (_,slot) => ({
+            ? Array.from({length:counts[t.id] ?? (parseRefs(t).length ? 1 : 2)}, (_,slot) => ({
                 id: "pending" + slot,
                 status: "submitting",
                 result_asset_id: null,
@@ -1277,7 +1277,7 @@ export default function CampaignWorkspace({
                                 }
                               />
                               <label className="field-label" htmlFor={"image-count-"+t.id}>Number of images</label>
-                              <select id={"image-count-"+t.id} className="image-count-select" value={counts[t.id] ?? 2} disabled={!!generating} onChange={e=>setCounts(s=>({...s,[t.id]:Number(e.target.value)}))}>
+                              <select id={"image-count-"+t.id} className="image-count-select" value={counts[t.id] ?? (parseRefs(t).length ? 1 : 2)} disabled={!!generating} onChange={e=>setCounts(s=>({...s,[t.id]:Number(e.target.value)}))}>
                                 {[1,2,3,4].map(n=><option key={n} value={n}>{n} image{n===1?"":"s"}</option>)}
                               </select>
                               <Button
@@ -1285,7 +1285,7 @@ export default function CampaignWorkspace({
                                 onClick={() => generate(t)}
                                 disabled={
                                   !!generating ||
-                                  busyJobs.length + (counts[t.id] ?? 2) > 8 ||
+                                  busyJobs.length + (counts[t.id] ?? (parseRefs(t).length ? 1 : 2)) > 8 ||
                                   (promptEdits[t.id] ?? t.prompt).trim()
                                     .length < 10
                                 }
@@ -1295,12 +1295,12 @@ export default function CampaignWorkspace({
                                 ) : (
                                   <Sparkles />
                                 )}
-                                Generate {counts[t.id] ?? 2} image{(counts[t.id] ?? 2) === 1 ? "" : "s"}
+                                Generate {counts[t.id] ?? (parseRefs(t).length ? 1 : 2)} image{(counts[t.id] ?? (parseRefs(t).length ? 1 : 2)) === 1 ? "" : "s"}
                                 <ArrowUp />
                               </Button>
                               <small>
                                 {generationSizeLabel(aspects[t.id] ?? t.aspect)}
-                                . {counts[t.id] ?? 2} Max images via fal. Higher resolution
+                                . {counts[t.id] ?? (parseRefs(t).length ? 1 : 2)} Max images via fal. Higher resolution
                                 takes longer and may cost more.
                               </small>
                             </>

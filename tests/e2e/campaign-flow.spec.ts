@@ -154,7 +154,10 @@ test("Saved campaign plan controls snapshots, two-image billing, draft retention
   expect(newBatch.jobs[0].generation_prompt).toContain(
     "Native output: Square · 1:1",
   );
-  expect(newBatch.jobs[0].generation_prompt).toContain("Tactile close view");
+  expect(JSON.parse(newBatch.workflow_json!).shots[0].direction).toContain("Tactile close view");
+  const planningRecords = (await (await request.post("http://127.0.0.1:6199/__control", {data:{}})).json()).records;
+  expect(planningRecords.filter((r:{plan?:boolean})=>r.plan).at(-1).instructions).toContain("Tactile close view");
+  expect(newBatch.jobs[0].generation_prompt).toContain("FINAL RV VIEW CONTRACT");
   expect(
     JSON.parse(
       (
@@ -180,6 +183,7 @@ test("Saved campaign plan controls snapshots, two-image billing, draft retention
     reference_ids: [ready[0].result_asset_id],
   });
   expect(turn.ok(), await turn.text()).toBe(true);
+  expect((await turn.json()).aspect).toBe("landscape_16_9");
   const refined = await post(
     "projects/" + project.id + "/chat/" + chatId + "/generate",
     {

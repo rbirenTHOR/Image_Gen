@@ -387,3 +387,11 @@ test('Placement and lifestyle photoshoots both retain scene integration without 
   }
   assert.doesNotMatch(buildPrompt('people', brief, 0), /SCENE INTEGRATION/);
 });
+
+
+test('Refinement format follows the source image rather than a universal landscape default', async () => {
+  const {sourceImageAspect, generationSizes} = await import('../lib/domain.ts');
+  for (const [aspect, size] of Object.entries(generationSizes)) assert.equal(sourceImageAspect(size.width, size.height), aspect);
+  assert.equal(sourceImageAspect(1000, 1000), 'square_hd');
+  assert.equal(sourceImageAspect(null, null), 'landscape_4_3');
+});

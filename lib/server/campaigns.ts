@@ -7,6 +7,7 @@ import { startBatch, batchView } from "./jobs";
 import { providerFetch } from "./provider-fetch";
 import {
   photographicBrief,
+  sourceImageAspect,
   generationCountSchema,
   promptEnhancementGuide,
   type CampaignTurn,
@@ -247,15 +248,21 @@ export async function createTurn(pid: string, owner: string, raw: unknown) {
       throw new ApiError(409, "This message identifier has already been used.");
     return existing;
   }
-  for (const id of data.reference_ids) await getAsset(id, owner);
+  const references = await Promise.all(data.reference_ids.map(id => getAsset(id, owner)));
+  const sourceJob = references.length ? await one<{aspect: string}>(
+    "SELECT COALESCE(j.output_aspect,b.aspect) AS aspect FROM jobs j JOIN batches b ON b.id=j.batch_id WHERE j.result_asset_id=? AND b.owner_id=? ORDER BY j.created_at DESC LIMIT 1",
+    references[0].id, owner,
+  ) : null;
+  const aspect = sourceJob?.aspect || sourceImageAspect(references[0]?.width ?? null, references[0]?.height ?? null);
   const now = Date.now();
   const inserted = await run(
-    "INSERT OR IGNORE INTO campaign_turns(id,owner_id,project_id,user_text,references_json,status,created_at,updated_at) SELECT ?,?,?,?,?,'planning',?,? WHERE NOT EXISTS(SELECT 1 FROM campaign_turns WHERE project_id=? AND status='planning' AND updated_at>?)",
+    "INSERT OR IGNORE INTO campaign_turns(id,owner_id,project_id,user_text,references_json,aspect,status,created_at,updated_at) SELECT ?,?,?,?,?,?,'planning',?,? WHERE NOT EXISTS(SELECT 1 FROM campaign_turns WHERE project_id=? AND status='planning' AND updated_at>?)",
     data.id,
     owner,
     pid,
     data.text,
     JSON.stringify(data.reference_ids),
+    aspect,
     now,
     now,
     pid,
