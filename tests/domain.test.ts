@@ -363,3 +363,26 @@ test('Full shoot coverage pairs every role once and advances only past ready com
   const all = [{stage:'compose',jobs:ids.map(shot_id => ({shot_id,status:'ready'}))}] as never;
   assert.deepEqual(nextPhotoshootIds(all), []);
 });
+
+test('Placement and lifestyle photoshoots both retain scene integration without repeating the brief', async () => {
+  const {photoshootPrompt, photoshootShots} = await import('../lib/photoshoot.ts');
+  const brief = 'One reader beside the exact unit in soft mountain light.';
+  const assessment = 'Source reference 1 is a fixed curbside view; retain its landmark spacing.';
+  for (const lifestyle of [false, true]) {
+    const prompt = buildPrompt('compose', brief, 0,
+      lifestyle ? photoshootPrompt(photoshootShots[1], '', assessment) : assessment,
+      lifestyle, lifestyle);
+    for (const rule of [/load-bearing ground plane/, /compact contact shadows/,
+      /Update reflections in glass/, /studio\/dealer lighting/, /white balance/,
+      /grain, atmospheric depth/, /distance-dependent sharpness/, /Occlusion must follow physical depth/])
+      assert.match(prompt, rule);
+    assert.equal(prompt.split(brief).length - 1, 1);
+    assert.equal(prompt.split(assessment).length - 1, 1);
+    if (lifestyle) {
+      assert.match(prompt, /VERTICAL HUMAN STORY/);
+      assert.match(prompt, /source evidence overrides unsupported camera/);
+      assert.doesNotMatch(prompt, /Keep the backdrop camera and horizon fixed/);
+    }
+  }
+  assert.doesNotMatch(buildPrompt('people', brief, 0), /SCENE INTEGRATION/);
+});

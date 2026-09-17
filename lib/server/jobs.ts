@@ -246,7 +246,7 @@ export async function startBatch(raw: unknown, owner: string, flow?: {shots: imp
         .bind(ids[slot], data.id, slot, slot < initialCount ? "submitting" : "waiting", now, now,
           shootShots?.[slot].label ?? shots?.[slot].label ?? "",
           buildPrompt(data.stage, data.prompt, slot,
-            shootShots ? photoshootPrompt(shootShots[slot], data.prompt, shots?.[slot].direction) : shots?.[slot].direction,
+            shootShots ? photoshootPrompt(shootShots[slot], "", shots?.[slot].direction) : shots?.[slot].direction,
             lifestyleCompose, !!shootShots),
           shootShots?.[slot].id ?? "", shootShots?.[slot].aspect ?? data.aspect),
     );

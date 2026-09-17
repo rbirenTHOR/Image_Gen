@@ -72,6 +72,13 @@ test("Saved campaign plan controls snapshots, two-image billing, draft retention
     "Never copy the RV from reference 2",
   );
   const records = (await control()).records;
+  expect(batch.jobs[0].generation_prompt).toContain("SCENE INTEGRATION");
+  expect(batch.jobs[0].generation_prompt).toContain("compact contact shadows");
+  expect(batch.jobs[0].generation_prompt).toContain("instead of copying reflections");
+  expect(batch.jobs[0].generation_prompt.split(doc.state.brief)).toHaveLength(2);
+  expect(records.filter((r: {plan?: boolean}) => r.plan).at(-1)!.instructions)
+    .toContain("Replace the source photo's studio/dealer lighting");
+
   expect(
     records.filter((r: { kind: string }) => r.kind === "image").length -
       before.records.filter((r: { kind: string }) => r.kind === "image").length,

@@ -134,6 +134,10 @@ export function flowPrompt(s: CampaignFlowState) {
     s.identity_ids.length
       ? "Reference 3 is candidate additional identity evidence. Verify it matches the same RV before using its photographed angle; a detail crop or duplicate does not establish a new view."
       : "",
+    "SOURCE AUTHORITY: RV photographs define the actual unit. Any model name, vehicle type, axle count, feature, color or configuration described in a reused brief or shot direction must be ignored when it conflicts with the RV photographs. Do not combine the previous campaign's unit with the selected RV.",
+    s.scene_mode === "place"
+      ? "LOCATION AUTHORITY: Reference 2 defines the selected place. Ignore conflicting location, terrain or time-of-day descriptions carried over from a previous setup; match this scene's actual light and environment."
+      : "",
     s.prop_ids.length
       ? `Reference ${3 + s.identity_ids.length} defines a requested object only; preserve its design without copying its background.`
       : "",
